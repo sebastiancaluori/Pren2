@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cpuzzle.proto\"t\n\x0cPieceCommand\x12\x10\n\x08piece_id\x18\x01 \x01(\r\x12\x0e\n\x06pick_x\x18\x02 \x01(\x02\x12\x0e\n\x06pick_y\x18\x03 \x01(\x02\x12\x0f\n\x07place_x\x18\x04 \x01(\x02\x12\x0f\n\x07place_y\x18\x05 \x01(\x02\x12\x10\n\x08rotation\x18\x06 \x01(\x02\".\n\rPuzzleCommand\x12\x1d\n\x06pieces\x18\x01 \x03(\x0b\x32\r.PieceCommand\"0\n\x03\x41\x63k\x12\x17\n\x06status\x18\x01 \x01(\x0e\x32\x07.Status\x12\x10\n\x08piece_id\x18\x02 \x01(\r*K\n\x06Status\x12\r\n\tSTATUS_OK\x10\x00\x12\x10\n\x0cSTATUS_ERROR\x10\x01\x12\x0f\n\x0bSTATUS_BUSY\x10\x02\x12\x0f\n\x0bSTATUS_DONE\x10\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cpuzzle.proto\"t\n\x0cPieceCommand\x12\x10\n\x08piece_id\x18\x01 \x01(\r\x12\x0e\n\x06pick_x\x18\x02 \x01(\x02\x12\x0e\n\x06pick_y\x18\x03 \x01(\x02\x12\x0f\n\x07place_x\x18\x04 \x01(\x02\x12\x0f\n\x07place_y\x18\x05 \x01(\x02\x12\x10\n\x08rotation\x18\x06 \x01(\x02\".\n\rPuzzleCommand\x12\x1d\n\x06pieces\x18\x01 \x03(\x0b\x32\r.PieceCommand\"0\n\x03\x41\x63k\x12\x17\n\x06status\x18\x01 \x01(\x0e\x32\x07.Status\x12\x10\n\x08piece_id\x18\x02 \x01(\r*]\n\x06Status\x12\r\n\tSTATUS_OK\x10\x00\x12\x10\n\x0cSTATUS_ERROR\x10\x01\x12\x0f\n\x0bSTATUS_BUSY\x10\x02\x12\x0f\n\x0bSTATUS_DONE\x10\x03\x12\x10\n\x0cSTATUS_READY\x10\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,7 +32,7 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'puzzle_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_STATUS']._serialized_start=232
-  _globals['_STATUS']._serialized_end=307
+  _globals['_STATUS']._serialized_end=325
   _globals['_PIECECOMMAND']._serialized_start=16
   _globals['_PIECECOMMAND']._serialized_end=132
   _globals['_PUZZLECOMMAND']._serialized_start=134

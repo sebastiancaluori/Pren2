@@ -28,7 +28,7 @@ enum Status {
   STATUS_ERROR = 1;
   STATUS_BUSY = 2;
   STATUS_DONE = 3;
-  STATUS_READY; = 4;
+  STATUS_READY = 4;
 }
 
 message Ack {
