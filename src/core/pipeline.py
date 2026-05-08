@@ -584,15 +584,30 @@ class PuzzlePipeline:
         return True
 
     def _execute_hardware(self, solution):
-        """Hardware ansteuern (PREN2)"""
-        self.logger.info("  → Motoren initialisieren...")
-        self.logger.info("  → Teile platzieren...")
+        from src.hardware.motion_control.MotionControlCommunication import send_to_robot
+        
+        self.logger.info("  → Initialisiere UART-Verbindung...")
+        
+        puzzle_pieces = solution.get("puzzle_pieces", [])
+        
+        if not puzzle_pieces:
+            self.logger.error("  ! Keine Puzzleteile zur Übertragung gefunden.")
+            return
 
-        # The movement instructions are already printed by _print_movement_instructions_from_pieces
-        # Hardware can read them from the log
+        self.logger.info(f"  → Sende {len(puzzle_pieces)} Teile an den Roboter...")
+        
+        success = send_to_robot(
+            pieces=puzzle_pieces,
+            port=self.config.hardware.serial_port,
+            baudrate=self.config.hardware.baud_rate,
+            timeout=5.0 
+        )
 
-        # TODO: Implementierung in PREN2
-        pass
+        if success:
+            self.logger.info("  ✓ Hardware-Befehl erfolgreich quittiert (ACK OK).")
+            self.logger.info("  → Roboter führt Bewegungen nun aus.")
+        else:
+            self.logger.error("  X Fehler bei der Kommunikation mit dem STM32.")
 
     def _launch_ui(self, solution):
         """Launch Kivy UI to visualize the solution."""
