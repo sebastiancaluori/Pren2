@@ -83,11 +83,15 @@ class PuzzlePipeline:
             if self.config.hardware.enabled:
                 from src.hardware.motion_control.MotionControlCommunication import wait_for_robot_start
                 
-                self.logger.info("Phase 0: Warte auf Freigabe durch den Roboter...")
-                wait_for_robot_start(
-                    port=self.config.hardware.serial_port,
-                    baudrate=self.config.hardware.baud_rate
-                )
+                self.logger.info("Phase 0: Warte auf Freigabe durch den Roboter (Hardware-Button)...")
+                try:
+                    wait_for_robot_start(
+                        port=self.config.hardware.serial_port,
+                        baudrate=self.config.hardware.baud_rate
+                    )
+                except Exception as e:
+                    self.logger.error(f"Abbruch in Phase 0: {e}")
+                    return PipelineResult(success=False, duration=0, message="Start durch Hardware-Button fehlgeschlagen")
                 
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
