@@ -198,9 +198,9 @@ class SolverTuning:
 class HardwareConfig:
     """Konfiguration für Hardware (PREN2)"""
 
-    serial_port: str = "/dev/ttyUSB0"
+    serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = False  # In PREN1 deaktiviert
+    enabled: bool = True  # In PREN1 deaktiviert
 
 
 @dataclass
