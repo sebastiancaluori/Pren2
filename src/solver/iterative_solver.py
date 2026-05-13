@@ -14,7 +14,7 @@ from src.solver.corner_fitter import CornerFit, CornerFitter
 from src.solver.corner_placement import evaluate_corner_layouts, place_corners
 from src.solver.edge_placement import try_edge_placement_on_corners
 from src.utils.geometry import rotate_and_crop
-from src.utils.Pose import Pose
+from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 
 
@@ -93,7 +93,9 @@ class IterativeSolver:
         """
 
         height, width = target.shape
-        self.corner_fitter = CornerFitter(width=width, height=height, tuning=self.tuning)
+        self.corner_fitter = CornerFitter(
+            width=width, height=height, tuning=self.tuning
+        )
 
         # Reset state
         self.all_guesses = []

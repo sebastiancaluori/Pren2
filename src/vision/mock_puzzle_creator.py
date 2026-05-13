@@ -4,9 +4,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.utils.Pose import Pose
+from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
-from src.vision.cut_patterns import generate_sharp_cut, generate_square_cut, generate_wavy_cut
+from src.vision.cut_patterns import (
+    generate_sharp_cut,
+    generate_square_cut,
+    generate_wavy_cut,
+)
 
 
 class MockPuzzleGenerator:
@@ -74,7 +78,7 @@ class MockPuzzleGenerator:
             # Option 2: Two horizontals, one vertical
             # Option 3: One vertical, one horizontal, one diagonal
 
-            config = "vhh" # random.choice(["vvh", "vhh", "vhd"])
+            config = "vhh"  # random.choice(["vvh", "vhh", "vhd"])
 
             if config == "vvh":
                 # Two vertical cuts dividing into thirds, one horizontal
@@ -352,7 +356,9 @@ class MockPuzzleGenerator:
 
         return saved_paths
 
-    def load_pieces_for_solver(self, piece_paths: list = None, scale: float = 1.0) -> tuple:  # type: ignore
+    def load_pieces_for_solver(
+        self, piece_paths: list = None, scale: float = 1.0
+    ) -> tuple:  # type: ignore
         """
         Load saved pieces and prepare them for the solver.
 

@@ -16,7 +16,7 @@ from src.solver.fine_tuner import FineTuner
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
 from src.solver.piece_analyzer import PieceAnalyzer
-from src.utils.Pose import Pose
+from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 
 from ..solver.guess_generator import GuessGenerator
@@ -35,8 +35,6 @@ class PipelineResult:
     duration: float
     message: str
     solution: Optional[dict] = None
-
-
 
 
 class PuzzlePipeline:
@@ -79,23 +77,32 @@ class PuzzlePipeline:
         start_time = time()
 
         try:
-            
             if self.config.hardware.enabled:
-                from src.hardware.motion_control.MotionControlCommunication import wait_for_robot_start
-                
-                self.logger.info("Phase 0: Warte auf Freigabe durch den Roboter (Hardware-Button)...")
+                from src.hardware.motion_control.MotionControlCommunication import (
+                    wait_for_robot_start,
+                )
+
+                self.logger.info(
+                    "Phase 0: Warte auf Freigabe durch den Roboter (Hardware-Button)..."
+                )
                 try:
                     wait_for_robot_start(
                         port=self.config.hardware.serial_port,
-                        baudrate=self.config.hardware.baud_rate
+                        baudrate=self.config.hardware.baud_rate,
                     )
                 except Exception as e:
                     self.logger.error(f"Abbruch in Phase 0: {e}")
-                    return PipelineResult(success=False, duration=0, message="Start durch Hardware-Button fehlgeschlagen")
-                
+                    return PipelineResult(
+                        success=False,
+                        duration=0,
+                        message="Start durch Hardware-Button fehlgeschlagen",
+                    )
+
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
-            pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces = self._process_vision()
+            pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces = (
+                self._process_vision()
+            )
 
             # Phase 2: Solving
             self.logger.info("Phase 2: Puzzle loesen")
@@ -206,8 +213,12 @@ class PuzzlePipeline:
                 # Load to get dimensions (Pixel an Aufloesung anpassen)
                 img = cv2.imread(str(piece_path), cv2.IMREAD_UNCHANGED)
                 if img is not None:
-                    piece_h = max(1, int(round(img.shape[0] * self.resolution.solver_scale)))
-                    piece_w = max(1, int(round(img.shape[1] * self.resolution.solver_scale)))
+                    piece_h = max(
+                        1, int(round(img.shape[0] * self.resolution.solver_scale))
+                    )
+                    piece_w = max(
+                        1, int(round(img.shape[1] * self.resolution.solver_scale))
+                    )
 
                     # Assign corner
                     corner_idx = idx % len(corner_positions)
@@ -225,13 +236,19 @@ class PuzzlePipeline:
         self.logger.info("  → Feature-Extraktion...")
 
         # Coarse copy for solver (fast)
-        piece_ids, piece_shapes = generator.load_pieces_for_solver(scale=self.resolution.solver_scale)
+        piece_ids, piece_shapes = generator.load_pieces_for_solver(
+            scale=self.resolution.solver_scale
+        )
 
         # Full-res copy kept separately for fine-tuning
-        _, piece_shapes_fine = generator.load_pieces_for_solver(scale=self.resolution.finetune_scale)
+        _, piece_shapes_fine = generator.load_pieces_for_solver(
+            scale=self.resolution.finetune_scale
+        )
 
         # Analysis uses coarse shapes (classification does not need full res)
-        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
+        PieceAnalyzer.analyze_all_pieces(
+            puzzle_pieces, piece_shapes, tuning=self.tuning
+        )
 
         # Print analysis results
         self.logger.info("\n" + "=" * 80)
@@ -268,7 +285,9 @@ class PuzzlePipeline:
 
         return piece_ids, piece_shapes, piece_shapes_fine, {}, puzzle_pieces
 
-    def _solve_puzzle(self, pieces, piece_shapes, piece_shapes_fine, piece_corner_info, puzzle_pieces):
+    def _solve_puzzle(
+        self, pieces, piece_shapes, piece_shapes_fine, piece_corner_info, puzzle_pieces
+    ):
         """Puzzle loesen mit iterativem Ansatz"""
         self.logger.info("  → Layout berechnen...")
 
@@ -316,7 +335,9 @@ class PuzzlePipeline:
 
         # Phase 2b: Fine-tuning auf voller Aufloesung
         self.logger.info("Phase 2b: Feinabstimmung (volle Aufloesung)")
-        all_guesses_for_finetune = solution.all_guesses if solution.all_guesses is not None else []
+        all_guesses_for_finetune = (
+            solution.all_guesses if solution.all_guesses is not None else []
+        )
         fine_placements, fine_score = self._finetune_solution(
             solution.remaining_placements,
             piece_shapes_fine,
@@ -355,7 +376,9 @@ class PuzzlePipeline:
                 piece.place_pose = Pose(
                     x=placement["x"], y=placement["y"], theta=placement["theta"]
                 )
-                piece.confidence = 1.0 if solution.score > self.tuning.score_threshold else 0.5
+                piece.confidence = (
+                    1.0 if solution.score > self.tuning.score_threshold else 0.5
+                )
                 self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
 
         # Print movement instructions using PuzzlePiece objects
@@ -512,7 +535,9 @@ class PuzzlePipeline:
 
         self.logger.info("\n" + "=" * 80 + "\n")
 
-    def _finetune_solution(self, placements, piece_shapes_fine, target_coarse, all_guesses):
+    def _finetune_solution(
+        self, placements, piece_shapes_fine, target_coarse, all_guesses
+    ):
         """Feinabstimmung auf voller Aufloesung.
 
         Hochskalierte Koordinaten (fine-space), Suchschritte skaliert nach
@@ -522,14 +547,13 @@ class PuzzlePipeline:
         if not placements:
             return placements, 0.0
 
-        ratio = self.resolution.finetune_ratio          # coarse→fine
-        coarse_ratio = 1.0 / ratio                      # fine→coarse
+        ratio = self.resolution.finetune_ratio  # coarse→fine
+        coarse_ratio = 1.0 / ratio  # fine→coarse
         fs = self.resolution.finetune_px_per_mm
 
         # Skaliere Koordinaten in fine-Aufloesung
         fine_placements = [
-            {**p, "x": p["x"] * ratio, "y": p["y"] * ratio}
-            for p in placements
+            {**p, "x": p["x"] * ratio, "y": p["y"] * ratio} for p in placements
         ]
 
         fine_target = np.ones(
@@ -589,22 +613,22 @@ class PuzzlePipeline:
 
     def _execute_hardware(self, solution):
         from src.hardware.motion_control.MotionControlCommunication import send_to_robot
-        
+
         self.logger.info("  → Initialisiere UART-Verbindung...")
-        
+
         puzzle_pieces = solution.get("puzzle_pieces", [])
-        
+
         if not puzzle_pieces:
             self.logger.error("  ! Keine Puzzleteile zur Übertragung gefunden.")
             return
 
         self.logger.info(f"  → Sende {len(puzzle_pieces)} Teile an den Roboter...")
-        
+
         success = send_to_robot(
             pieces=puzzle_pieces,
             port=self.config.hardware.serial_port,
             baudrate=self.config.hardware.baud_rate,
-            timeout=5.0 
+            timeout=5.0,
         )
 
         if success:
@@ -645,5 +669,6 @@ class PuzzlePipeline:
             self.logger.info(f"  → Calculated movement data for {num_movements} pieces")
 
         from src.ui.simulator.solver_visualizer import SolverVisualizerApp
+
         app = SolverVisualizerApp(solver_data)
         app.run()
