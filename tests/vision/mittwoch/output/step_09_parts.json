@@ -1,0 +1,139 @@
+{
+  "run_name": "step_09",
+  "part_count": 4,
+  "expected_part_count": 4,
+  "part_count_is_valid": true,
+  "px_per_mm": 10.0,
+  "a4_size_mm": {
+    "width": 297.0,
+    "height": 210.0,
+    "area_mm2": 62370.0
+  },
+  "coordinate_system": {
+    "origin": "bottom_left",
+    "description": "origin bottom_left, x right, y up"
+  },
+  "expected_total_part_area": {
+    "description": "PREN puzzle area without frame",
+    "area_mm2": 23814
+  },
+  "area_validation": {
+    "expected_total_area_mm2": 23814,
+    "measured_total_area_mm2": 23924.93,
+    "area_error_mm2": 110.93,
+    "area_error_percent": 0.465818,
+    "max_allowed_error_percent": 1.0,
+    "is_valid": true
+  },
+  "marker_position_mode": "outside",
+  "segmentation": {
+    "threshold_mode": "otsu",
+    "fixed_threshold_value": 150,
+    "adaptive_threshold_block_size": 101,
+    "adaptive_threshold_c": 8,
+    "gaussian_blur_kernel_size": 7,
+    "morph_open_kernel_size": 5,
+    "morph_close_kernel_size": 7,
+    "fill_contour_holes": true,
+    "ignore_border_mm": 0.0
+  },
+  "sorting": "smallest_a4_y_then_smallest_a4_x",
+  "parts": [
+    {
+      "index": 1,
+      "part_name": "part_01",
+      "centroid_mm": {
+        "x": 199.345995,
+        "y": 42.195832
+      },
+      "centroid_px": {
+        "x": 1993.459947,
+        "y": 1678.041677
+      },
+      "area_mm2": 5986.975,
+      "bounding_box_px": {
+        "x": 1346,
+        "y": 1348,
+        "w": 1185,
+        "h": 689
+      },
+      "image_path": "output/parts/part_01.png",
+      "mask_path": "output/part_masks/part_01_mask.png",
+      "cutout_path": "output/part_cutouts/part_01_cutout.png",
+      "algo_input_mask_filename": "png_0.png",
+      "algo_input_mask_path": "output/algo_input/png_0.png"
+    },
+    {
+      "index": 2,
+      "part_name": "part_02",
+      "centroid_mm": {
+        "x": 65.357472,
+        "y": 48.697465
+      },
+      "centroid_px": {
+        "x": 653.574717,
+        "y": 1613.025355
+      },
+      "area_mm2": 5934.075,
+      "bounding_box_px": {
+        "x": 141,
+        "y": 1111,
+        "w": 965,
+        "h": 867
+      },
+      "image_path": "output/parts/part_02.png",
+      "mask_path": "output/part_masks/part_02_mask.png",
+      "cutout_path": "output/part_cutouts/part_02_cutout.png",
+      "algo_input_mask_filename": "png_1.png",
+      "algo_input_mask_path": "output/algo_input/png_1.png"
+    },
+    {
+      "index": 3,
+      "part_name": "part_03",
+      "centroid_mm": {
+        "x": 221.628927,
+        "y": 130.957023
+      },
+      "centroid_px": {
+        "x": 2216.289268,
+        "y": 790.429768
+      },
+      "area_mm2": 6059.0,
+      "bounding_box_px": {
+        "x": 1710,
+        "y": 297,
+        "w": 964,
+        "h": 858
+      },
+      "image_path": "output/parts/part_03.png",
+      "mask_path": "output/part_masks/part_03_mask.png",
+      "cutout_path": "output/part_cutouts/part_03_cutout.png",
+      "algo_input_mask_filename": "png_2.png",
+      "algo_input_mask_path": "output/algo_input/png_2.png"
+    },
+    {
+      "index": 4,
+      "part_name": "part_04",
+      "centroid_mm": {
+        "x": 67.530501,
+        "y": 138.414929
+      },
+      "centroid_px": {
+        "x": 675.305007,
+        "y": 715.85071
+      },
+      "area_mm2": 5944.88,
+      "bounding_box_px": {
+        "x": 136,
+        "y": 337,
+        "w": 1191,
+        "h": 717
+      },
+      "image_path": "output/parts/part_04.png",
+      "mask_path": "output/part_masks/part_04_mask.png",
+      "cutout_path": "output/part_cutouts/part_04_cutout.png",
+      "algo_input_mask_filename": "png_3.png",
+      "algo_input_mask_path": "output/algo_input/png_3.png"
+    }
+  ]
+}

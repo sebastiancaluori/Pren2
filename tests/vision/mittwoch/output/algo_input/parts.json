@@ -1,0 +1,61 @@
+{
+  "part_count": 4,
+  "expected_part_count": 4,
+  "part_count_is_valid": true,
+  "coordinate_system": {
+    "origin": "bottom_left",
+    "description": "origin bottom_left, x right, y up"
+  },
+  "px_per_mm": 10.0,
+  "a4_size_mm": {
+    "width": 297.0,
+    "height": 210.0
+  },
+  "expected_total_part_area_mm2": 23814,
+  "area_validation": {
+    "expected_total_area_mm2": 23814,
+    "measured_total_area_mm2": 23924.93,
+    "area_error_mm2": 110.93,
+    "area_error_percent": 0.465818,
+    "max_allowed_error_percent": 1.0,
+    "is_valid": true
+  },
+  "parts": [
+    {
+      "index": 1,
+      "mask_filename": "png_0.png",
+      "centroid_mm": {
+        "x": 199.345995,
+        "y": 42.195832
+      },
+      "area_mm2": 5986.975
+    },
+    {
+      "index": 2,
+      "mask_filename": "png_1.png",
+      "centroid_mm": {
+        "x": 65.357472,
+        "y": 48.697465
+      },
+      "area_mm2": 5934.075
+    },
+    {
+      "index": 3,
+      "mask_filename": "png_2.png",
+      "centroid_mm": {
+        "x": 221.628927,
+        "y": 130.957023
+      },
+      "area_mm2": 6059.0
+    },
+    {
+      "index": 4,
+      "mask_filename": "png_3.png",
+      "centroid_mm": {
+        "x": 67.530501,
+        "y": 138.414929
+      },
+      "area_mm2": 5944.88
+    }
+  ]
+}
