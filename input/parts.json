@@ -1,5 +1,5 @@
 {
-  "part_count": 5,
+  "part_count": 6,
   "expected_part_count": 4,
   "part_count_is_valid": false,
   "coordinate_system": {
@@ -14,9 +14,9 @@
   "expected_total_part_area_mm2": 23814,
   "area_validation": {
     "expected_total_area_mm2": 23814,
-    "measured_total_area_mm2": 23237.8,
-    "area_error_mm2": -576.2,
-    "area_error_percent": -2.419585,
+    "measured_total_area_mm2": 24857.775,
+    "area_error_mm2": 1043.775,
+    "area_error_percent": 4.383031,
     "max_allowed_error_percent": 1.0,
     "is_valid": false
   },
@@ -25,46 +25,55 @@
       "index": 1,
       "mask_filename": "piece_0.png",
       "centroid_mm": {
-        "x": 203.007778,
-        "y": 58.435374
+        "x": 199.226275,
+        "y": 61.220832
       },
-      "area_mm2": 4716.725
+      "area_mm2": 4145.165
     },
     {
       "index": 2,
       "mask_filename": "piece_1.png",
       "centroid_mm": {
-        "x": 60.546595,
-        "y": 62.63801
+        "x": 65.956207,
+        "y": 65.634051
       },
-      "area_mm2": 4692.345
+      "area_mm2": 4108.215
     },
     {
       "index": 3,
       "mask_filename": "piece_2.png",
       "centroid_mm": {
-        "x": 225.655824,
-        "y": 124.571225
+        "x": 220.806011,
+        "y": 123.263778
       },
-      "area_mm2": 4840.92
+      "area_mm2": 4292.015
     },
     {
       "index": 4,
       "mask_filename": "piece_3.png",
       "centroid_mm": {
-        "x": 61.984741,
-        "y": 129.226772
+        "x": 67.718273,
+        "y": 127.970161
       },
-      "area_mm2": 4719.4
+      "area_mm2": 4143.96
     },
     {
       "index": 5,
       "mask_filename": "piece_4.png",
       "centroid_mm": {
-        "x": 201.876123,
-        "y": 193.809773
+        "x": 198.106514,
+        "y": 191.157649
       },
-      "area_mm2": 4268.41
+      "area_mm2": 5103.615
+    },
+    {
+      "index": 6,
+      "mask_filename": "piece_5.png",
+      "centroid_mm": {
+        "x": 77.423006,
+        "y": 193.253647
+      },
+      "area_mm2": 3064.805
     }
   ]
 }
