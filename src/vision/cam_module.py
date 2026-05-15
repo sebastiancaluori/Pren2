@@ -311,6 +311,19 @@ def captureImageFromCamera():
         )
         picam2.configure(cameraConfig)
 
+        # Test gegen Überbelichtung
+        # ExposureTime ist in Mikrosekunden:
+        # 5000  = dunkler
+        # 8000  = mittel
+        # 12000 = heller
+        picam2.set_controls({
+            "AeEnable": False,
+            "AwbEnable": False,
+            "ExposureTime": 6000,
+            "AnalogueGain": 1.0,
+            "ColourGains": (1.5, 1.5),
+        })
+
         print("Starte Kamera...")
         picam2.start()
 
@@ -319,6 +332,13 @@ def captureImageFromCamera():
 
         print("Nehme Bild auf...")
         imageBgr = picam2.capture_array()
+
+        grayImage = cv2.cvtColor(imageBgr, cv2.COLOR_BGR2GRAY)
+        overexposedPixels = np.sum(grayImage >= 250)
+        totalPixels = grayImage.shape[0] * grayImage.shape[1]
+        overexposedRatio = overexposedPixels / totalPixels
+
+        print(f"Überbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
 
         return imageBgr
 
