@@ -48,6 +48,7 @@ STARTUP_WAIT_SECONDS = 2.0
 ROTATE_90_CLOCKWISE = False
 ROTATE_180 = False
 
+MARKER_DISTANCE_TO_A4_EDGE_MM = 5.0
 
 # ============================================================
 # AUSGABE
@@ -420,7 +421,17 @@ def extractA4Corners(detectedMarkers):
     a4CornerTopLeft = detectedMarkers[1]["corners"][getA4CornerIndexForMarker(1)]
     a4CornerTopRight = detectedMarkers[2]["corners"][getA4CornerIndexForMarker(2)]
     a4CornerBottomRight = detectedMarkers[3]["corners"][getA4CornerIndexForMarker(3)]
+    a4Corners = {
+        "bottom_left": a4CornerBottomLeft.astype(np.float32),
+        "top_left": a4CornerTopLeft.astype(np.float32),
+        "top_right": a4CornerTopRight.astype(np.float32),
+        "bottom_right": a4CornerBottomRight.astype(np.float32),
+    }
 
+    if MARKER_POSITION_MODE == "outside":
+        a4Corners = shiftOutsideA4CornersSimple(a4Corners)
+
+    return a4Corners
     return {
         "bottom_left": a4CornerBottomLeft.astype(np.float32),
         "top_left": a4CornerTopLeft.astype(np.float32),
@@ -428,7 +439,15 @@ def extractA4Corners(detectedMarkers):
         "bottom_right": a4CornerBottomRight.astype(np.float32),
     }
 
+def shiftOutsideA4CornersSimple(a4Corners):
+    shiftPx = MARKER_DISTANCE_TO_A4_EDGE_MM * PX_PER_MM
 
+    a4Corners["bottom_left"] = a4Corners["bottom_left"] + np.array([shiftPx, -shiftPx], dtype=np.float32)
+    a4Corners["top_left"] = a4Corners["top_left"] + np.array([shiftPx, shiftPx], dtype=np.float32)
+    a4Corners["top_right"] = a4Corners["top_right"] + np.array([-shiftPx, shiftPx], dtype=np.float32)
+    a4Corners["bottom_right"] = a4Corners["bottom_right"] + np.array([-shiftPx, -shiftPx], dtype=np.float32)
+
+    return a4Corners
 # ============================================================
 # HOMOGRAPHIE / KOORDINATEN
 # ============================================================
