@@ -130,7 +130,7 @@ COORDINATE_ORIGIN = "top_right"
 # "fixed"    = fester Threshold mit THRESHOLD_VALUE
 # "otsu"     = automatischer Threshold, meistens gute erste Wahl
 # "adaptive" = robuster bei ungleichmässiger Beleuchtung
-SEGMENTATION_THRESHOLD_MODE = "adaptive"
+SEGMENTATION_THRESHOLD_MODE = "otsu"
 
 # Nur verwendet, wenn SEGMENTATION_THRESHOLD_MODE = "fixed"
 THRESHOLD_VALUE = 150
