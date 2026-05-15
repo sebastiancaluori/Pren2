@@ -1,10 +1,10 @@
 {
-  "part_count": 6,
+  "part_count": 3,
   "expected_part_count": 4,
   "part_count_is_valid": false,
   "coordinate_system": {
-    "origin": "bottom_left",
-    "description": "origin bottom_left, x right, y up"
+    "origin": "top_right",
+    "description": "origin top_right, x left, y down"
   },
   "px_per_mm": 10.0,
   "a4_size_mm": {
@@ -14,9 +14,9 @@
   "expected_total_part_area_mm2": 23814,
   "area_validation": {
     "expected_total_area_mm2": 23814,
-    "measured_total_area_mm2": 24857.775,
-    "area_error_mm2": 1043.775,
-    "area_error_percent": 4.383031,
+    "measured_total_area_mm2": 23540.845,
+    "area_error_mm2": -273.155,
+    "area_error_percent": -1.147035,
     "max_allowed_error_percent": 1.0,
     "is_valid": false
   },
@@ -25,55 +25,28 @@
       "index": 1,
       "mask_filename": "piece_0.png",
       "centroid_mm": {
-        "x": 199.226275,
-        "y": 61.220832
+        "x": 49.376334,
+        "y": 87.662409
       },
-      "area_mm2": 4145.165
+      "area_mm2": 5967.925
     },
     {
       "index": 2,
       "mask_filename": "piece_1.png",
       "centroid_mm": {
-        "x": 65.956207,
-        "y": 65.634051
+        "x": 227.096266,
+        "y": 103.548387
       },
-      "area_mm2": 4108.215
+      "area_mm2": 11652.355
     },
     {
       "index": 3,
       "mask_filename": "piece_2.png",
       "centroid_mm": {
-        "x": 220.806011,
-        "y": 123.263778
+        "x": 124.637031,
+        "y": 132.029989
       },
-      "area_mm2": 4292.015
-    },
-    {
-      "index": 4,
-      "mask_filename": "piece_3.png",
-      "centroid_mm": {
-        "x": 67.718273,
-        "y": 127.970161
-      },
-      "area_mm2": 4143.96
-    },
-    {
-      "index": 5,
-      "mask_filename": "piece_4.png",
-      "centroid_mm": {
-        "x": 198.106514,
-        "y": 191.157649
-      },
-      "area_mm2": 5103.615
-    },
-    {
-      "index": 6,
-      "mask_filename": "piece_5.png",
-      "centroid_mm": {
-        "x": 77.423006,
-        "y": 193.253647
-      },
-      "area_mm2": 3064.805
+      "area_mm2": 5920.565
     }
   ]
 }

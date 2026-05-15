@@ -33,7 +33,7 @@ CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
 # Bildquelle:
 # "camera" = neues Bild mit Pi Camera 3 aufnehmen
 # "file"   = bestehendes Bild von Datei laden
-IMAGE_SOURCE = "camera"
+IMAGE_SOURCE = "file"
 
 # Pfad zum Eingabebild, falls IMAGE_SOURCE = "file" oder falls keine Kamera gefunden wurde
 INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
@@ -119,7 +119,7 @@ PX_PER_MM = 10.0
 # "top_left"     = Ursprung oben links,   x nach rechts, y nach unten
 # "top_right"    = Ursprung oben rechts,  x nach links,  y nach unten
 # "bottom_right" = Ursprung unten rechts, x nach links,  y nach oben
-COORDINATE_ORIGIN = "bottom_left"
+COORDINATE_ORIGIN = "top_right"
 
 
 # ============================================================
@@ -416,10 +416,24 @@ def extractA4Corners(detectedMarkers):
     if missingIds:
         raise RuntimeError(f"Nicht alle benötigten Marker wurden erkannt. Fehlend: {missingIds}")
 
-    a4CornerBottomLeft = detectedMarkers[0]["corners"][getA4CornerIndexForMarker(0)]
-    a4CornerTopLeft = detectedMarkers[1]["corners"][getA4CornerIndexForMarker(1)]
-    a4CornerTopRight = detectedMarkers[2]["corners"][getA4CornerIndexForMarker(2)]
-    a4CornerBottomRight = detectedMarkers[3]["corners"][getA4CornerIndexForMarker(3)]
+    # Aktuelle physische Marker-Anordnung:
+    #
+    # ID 2 = oben links
+    # ID 0 = oben rechts
+    # ID 3 = unten links
+    # ID 1 = unten rechts
+    #
+    # Marker-Ecken laut deinem Aufbau:
+    # ID 0 -> Ecke 3 zeigt auf A4-Ecke
+    # ID 1 -> Ecke 2 zeigt auf A4-Ecke
+    # ID 2 -> Ecke 1 zeigt auf A4-Ecke
+    # ID 3 -> Ecke 0 zeigt auf A4-Ecke
+
+
+    a4CornerBottomLeft = detectedMarkers[2]["corners"][1]
+    a4CornerTopRight = detectedMarkers[0]["corners"][3]
+    a4CornerBottomRight = detectedMarkers[1]["corners"][2]
+    a4CornerTopLeft = detectedMarkers[3]["corners"][0]
 
     return {
         "bottom_left": a4CornerBottomLeft.astype(np.float32),
