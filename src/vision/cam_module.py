@@ -320,7 +320,7 @@ def captureImageFromCamera():
             "AeEnable": False,
             "AwbEnable": False,
             "ExposureTime": 16000,
-            "AnalogueGain": 2.0,
+            "AnalogueGain": 1.0,
             "ColourGains": (1.5, 1.5),
         })
 
