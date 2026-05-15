@@ -14,14 +14,9 @@ except (ImportError, ModuleNotFoundError):
 
 
 
-PROJECT_ROOT = Path("/home/sebastian/PycharmProjects/pren2/pren-puzzle-solver")
+PROJECT_ROOT = Path(__file__).parent.parent.parent  # src/vision/cam_module.py → project root
 
 DESTINATION_TO_ALGO_INPUT_FOLDER = PROJECT_ROOT / "input"
-
-OUTPUT_DIR = PROJECT_ROOT / "output"
-OUTPUT_PARTS_DIR = OUTPUT_DIR / "parts"
-OUTPUT_PART_MASKS_DIR = OUTPUT_DIR / "part_masks"
-OUTPUT_PART_CUTOUTS_DIR = OUTPUT_DIR / "part_cutouts"
 
 INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
 

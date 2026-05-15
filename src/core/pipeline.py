@@ -298,8 +298,14 @@ class PuzzlePipeline:
         loader = CameraLoader(input_dir)
         json_data = loader.load_json()
 
-        self.logger.info(f"  → Kamera-Eingabe erkannt: {loader.px_per_mm} px/mm, "
-                         f"A4 {loader.a4_width_mm}×{loader.a4_height_mm} mm")
+        self.logger.info(
+            f"  → Kamera-Eingabe erkannt: {loader.px_per_mm} px/mm, "
+            f"A4 {loader.a4_width_mm}×{loader.a4_height_mm} mm, "
+            f"Koordinatenursprung: {loader.origin}"
+        )
+
+        for warning in loader.validate():
+            self.logger.warning(f"  ⚠  {warning}")
 
         # Auflösung aus JSON übernehmen und alle abhängigen Komponenten neu initialisieren
         self.config.resolution.native_px_per_mm = loader.px_per_mm
