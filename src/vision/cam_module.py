@@ -143,7 +143,7 @@ ADAPTIVE_THRESHOLD_C = 8
 GAUSSIAN_BLUR_KERNEL_SIZE = 7
 
 # Minimale / maximale Fläche eines Teils
-MIN_PART_AREA_MM2 = 3000.0
+MIN_PART_AREA_MM2 = 4500.0
 MAX_PART_AREA_MM2 = 100000.0
 
 # Morphologie
@@ -319,8 +319,8 @@ def captureImageFromCamera():
         picam2.set_controls({
             "AeEnable": False,
             "AwbEnable": False,
-            "ExposureTime": 12000,
-            "AnalogueGain": 1.0,
+            "ExposureTime": 16000,
+            "AnalogueGain": 2.0,
             "ColourGains": (1.5, 1.5),
         })
 
