@@ -416,18 +416,6 @@ def extractA4Corners(detectedMarkers):
     if missingIds:
         raise RuntimeError(f"Nicht alle benötigten Marker wurden erkannt. Fehlend: {missingIds}")
 
-    # Aktuelle physische Marker-Anordnung:
-    #
-    # ID 2 = oben links
-    # ID 0 = oben rechts
-    # ID 3 = unten links
-    # ID 1 = unten rechts
-    #
-    # Marker-Ecken laut deinem Aufbau:
-    # ID 0 -> Ecke 3 zeigt auf A4-Ecke
-    # ID 1 -> Ecke 2 zeigt auf A4-Ecke
-    # ID 2 -> Ecke 1 zeigt auf A4-Ecke
-    # ID 3 -> Ecke 0 zeigt auf A4-Ecke
 
 
     a4CornerBottomLeft = detectedMarkers[2]["corners"][1]
