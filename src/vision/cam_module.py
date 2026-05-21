@@ -1,10 +1,13 @@
-#dezidierten ordner für algo input folder erstellt
+# cam_module.py
+# Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
+# und Export der Algorithmus-Eingaben.
 
-import shutil
-from pathlib import Path
-import cv2
-import time
 import json
+import shutil
+import time
+from pathlib import Path
+
+import cv2
 import numpy as np
 
 try:
@@ -13,50 +16,57 @@ except (ImportError, ModuleNotFoundError):
     Picamera2 = None
 
 
+# ============================================================
+# PROJEKT / DATEIEN
+# ============================================================
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent  # src/vision/cam_module.py → project root
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # src/vision/cam_module.py -> project root
 
+# Zielordner fuer die Daten, die an den Puzzle-Algorithmus gehen.
+# In diesen Ordner werden parts.json und die Teilmasken geschrieben.
 DESTINATION_TO_ALGO_INPUT_FOLDER = PROJECT_ROOT / "input"
 
+# Eingabebild, falls IMAGE_SOURCE = "file" oder keine Pi Camera vorhanden ist.
 INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
 
-# Dateiname der JSON-Datei fuer den Algorithmus
 ALGO_INPUT_JSON_FILENAME = "parts.json"
-
-# Praefix fuer die Maskenbilder im Algorithmus-Ordner.
-# Beispiel: "img" ergibt img1.png, img2.png, img3.png, ...
 ALGO_INPUT_MASK_PREFIX = "piece_"
-
-# True = inhalt des Ordners und aller unterordner löschen
 CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
 
-# Bildquelle:
+
+# ============================================================
+# BILDEINGABE
+# ============================================================
+
 # "camera" = neues Bild mit Pi Camera 3 aufnehmen
 # "file"   = bestehendes Bild von Datei laden
 IMAGE_SOURCE = "camera"
 
-# Pfad zum Eingabebild, falls IMAGE_SOURCE = "file" oder falls keine Kamera gefunden wurde
-INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
-# Bildgrösse für Kameraaufnahme
 IMAGE_WIDTH = 4608
 IMAGE_HEIGHT = 2592
-
-# Wartezeit nach Kamerastart
 STARTUP_WAIT_SECONDS = 3.0
 
-# Rotation
 ROTATE_90_CLOCKWISE = False
 ROTATE_180 = False
 
+# Manuelle Kameraeinstellungen fuer Tests gegen Ueberbelichtung.
+CAMERA_CONTROLS = {
+    "AeEnable": False,
+    "AwbEnable": False,
+    "ExposureTime": 6000,  # Mikrosekunden
+    "AnalogueGain": 1.0,
+    "ColourGains": (1.5, 1.5),
+}
+
 
 # ============================================================
-# AUSGABE
+# AUSGABE / DEBUG-DATEIEN
 # ============================================================
 
-OUTPUT_DIR = "output"
-OUTPUT_PARTS_DIR = "output/parts"
-OUTPUT_PART_MASKS_DIR = "output/part_masks"
-OUTPUT_PART_CUTOUTS_DIR = "output/part_cutouts"
+OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_PARTS_DIR = OUTPUT_DIR / "parts"
+OUTPUT_PART_MASKS_DIR = OUTPUT_DIR / "part_masks"
+OUTPUT_PART_CUTOUTS_DIR = OUTPUT_DIR / "part_cutouts"
 
 RUN_NAME = "step_09"
 
@@ -67,18 +77,8 @@ OUTPUT_MASK_FILENAME = f"{RUN_NAME}_parts_mask.png"
 OUTPUT_PARTS_DEBUG_FILENAME = f"{RUN_NAME}_parts_debug.png"
 OUTPUT_JSON_FILENAME = f"{RUN_NAME}_parts.json"
 OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
-OUTPUT_H_IMAGE_TO_A4_MM_PATH = f"{RUN_NAME}_h_image_to_a4_mm.npy"
 
-
-# ============================================================
-# DEBUG-ANZEIGE
-# ============================================================
-
-# True  = Bilder mit cv2.imshow anzeigen
-# False = keine Fenster anzeigen, Dateien werden trotzdem gespeichert
 DEBUG_SHOW_IMAGES = False
-
-# Wartezeit für jedes Debug-Fenster
 DEBUG_WAIT_MS = 1000
 
 INPUT_WINDOW_NAME = "Input Image"
@@ -95,30 +95,76 @@ PARTS_DEBUG_WINDOW_NAME = "Parts Debug"
 ARUCO_DICT = cv2.aruco.DICT_4X4_50
 REQUIRED_IDS = [0, 1, 2, 3]
 
-# Position der Marker relativ zur A4-Fläche:
-# "inside"  = Marker liegen innerhalb der A4-Fläche
-# "outside" = Marker liegen ausserhalb der A4-Fläche
-MARKER_POSITION_MODE = "outside"
-
 # A4 im Querformat
 A4_WIDTH_MM = 297.0
 A4_HEIGHT_MM = 210.0
-
-# Zielauflösung der Entzerrung
 PX_PER_MM = 10.0
 
-
-# ============================================================
-# KOORDINATENSYSTEM
-# ============================================================
-
-# Ursprung des A4-Koordinatensystems für Teile-Schwerpunkte.
+# ------------------------------------------------------------
+# Marker-Ecken-Zuordnung
+# ------------------------------------------------------------
+# Diese Punkte sind die gemessenen Referenzpunkte im Bild.
+# Bei OFFSET = 0.0 sind diese Referenzpunkte direkt die echten A4-Ecken.
 #
-# Mögliche Werte:
-# "bottom_left"  = Ursprung unten links,  x nach rechts, y nach oben
-# "top_left"     = Ursprung oben links,   x nach rechts, y nach unten
-# "top_right"    = Ursprung oben rechts,  x nach links,  y nach unten
-# "bottom_right" = Ursprung unten rechts, x nach links,  y nach oben
+# OpenCV-ArUco-Corner-Indizes normalerweise:
+# 0 = oben links, 1 = oben rechts, 2 = unten rechts, 3 = unten links
+# bezogen auf den Marker selbst im Bild.
+#
+# Deine aktuelle funktionierende Zuordnung:
+# A4 top_right    = ID 0 / Ecke 3
+# A4 bottom_right = ID 1 / Ecke 2
+# A4 bottom_left  = ID 2 / Ecke 1
+# A4 top_left     = ID 3 / Ecke 0
+REFERENCE_CORNER_FROM_MARKER = {
+    "top_left": {"marker_id": 3, "corner_index": 0},
+    "top_right": {"marker_id": 0, "corner_index": 3},
+    "bottom_right": {"marker_id": 1, "corner_index": 2},
+    "bottom_left": {"marker_id": 2, "corner_index": 1},
+}
+
+# ------------------------------------------------------------
+# A4-Offset / Rahmen-Offset
+# ------------------------------------------------------------
+# Diese Werte beschreiben, wie weit die gemessenen Referenzpunkte ausserhalb
+# der echten A4-Flaeche liegen.
+#
+# Beispiel:
+# Wenn ein Rahmen rundherum 20 mm breit ist und die ArUco-Referenzpunkte
+# auf den Rahmenecken liegen, dann:
+# FRAME_OFFSET_LEFT_MM = 20.0
+# FRAME_OFFSET_RIGHT_MM = 20.0
+# FRAME_OFFSET_TOP_MM = 20.0
+# FRAME_OFFSET_BOTTOM_MM = 20.0
+#
+# Wenn aktuell die ArUco-Ecken direkt den A4-Ecken entsprechen:
+# alle Werte auf 0.0 lassen.
+FRAME_OFFSET_LEFT_MM = 0.0
+FRAME_OFFSET_RIGHT_MM = 0.0
+FRAME_OFFSET_TOP_MM = 0.0
+FRAME_OFFSET_BOTTOM_MM = 0.0
+
+# Optionaler Feintrimm pro echter A4-Ecke.
+# Koordinaten in der Referenz-/Rahmenflaeche:
+# +x = nach rechts, +y = nach unten.
+#
+# Normalerweise alles 0.0 lassen.
+# Nur verwenden, wenn einzelne Marker mechanisch anders sitzen.
+A4_CORNER_EXTRA_OFFSETS_MM = {
+    "top_left": {"x": 0.0, "y": 0.0},
+    "top_right": {"x": 0.0, "y": 0.0},
+    "bottom_right": {"x": 0.0, "y": 0.0},
+    "bottom_left": {"x": 0.0, "y": 0.0},
+}
+
+# Optionaler Rand, der bei der Teile-Erkennung ignoriert wird.
+IGNORE_BORDER_MM = 0.0
+
+
+# ============================================================
+# KOORDINATENSYSTEM FUER OUTPUT
+# ============================================================
+
+# Fix: Ursprung oben rechts, x nach links, y nach unten.
 COORDINATE_ORIGIN = "top_right"
 
 
@@ -126,44 +172,22 @@ COORDINATE_ORIGIN = "top_right"
 # TEILE-SEGMENTIERUNG
 # ============================================================
 
-# Dunkle Teile auf hellem Hintergrund
-# "fixed"    = fester Threshold mit THRESHOLD_VALUE
-# "otsu"     = automatischer Threshold, meistens gute erste Wahl
-# "adaptive" = robuster bei ungleichmässiger Beleuchtung
-SEGMENTATION_THRESHOLD_MODE = "otsu"
-
-# Nur verwendet, wenn SEGMENTATION_THRESHOLD_MODE = "fixed"
+SEGMENTATION_THRESHOLD_MODE = "otsu"  # "fixed", "otsu", "adaptive"
 THRESHOLD_VALUE = 150
-
-# Nur verwendet, wenn SEGMENTATION_THRESHOLD_MODE = "adaptive"
 ADAPTIVE_THRESHOLD_BLOCK_SIZE = 101
 ADAPTIVE_THRESHOLD_C = 8
 
-# Leichte Glättung vor dem Threshold
 GAUSSIAN_BLUR_KERNEL_SIZE = 7
 
-# Minimale / maximale Fläche eines Teils
 MIN_PART_AREA_MM2 = 4500.0
 MAX_PART_AREA_MM2 = 100000.0
 
-# Morphologie
 MORPH_OPEN_KERNEL_SIZE = 5
 MORPH_CLOSE_KERNEL_SIZE = 7
-
-# Löcher in schwarzen Teilen füllen
 FILL_CONTOUR_HOLES = True
 
-# Optionaler Rand, der bei der Teile-Erkennung ignoriert wird.
-# Hilft gegen Störungen am A4-Rand.
-IGNORE_BORDER_MM = 0.0
-
-# Zuschlag rund um Bounding Box beim Ausschneiden
 CROP_PADDING_PX = 0
-
-# Erwartete Anzahl Teile
 EXPECTED_PART_COUNT = 4
-
-# Weisser Hintergrund für freigestellte Teilbilder
 CUTOUT_BACKGROUND_VALUE = 255
 
 
@@ -171,15 +195,8 @@ CUTOUT_BACKGROUND_VALUE = 255
 # VALIDIERUNG
 # ============================================================
 
-# Erwartete Gesamtfläche der Teile:
-# Die Teile bilden zusammen eine halbe A4-Fläche.
-# EXPECTED_TOTAL_PART_AREA_MM2 = (A4_WIDTH_MM * A4_HEIGHT_MM) / 2.0
-
-# Falls Teile gesamt eine andere Fläche als A5 haben:
 # PREN-Puzzle ohne Rahmen: 18.9 x 12.6 cm
 EXPECTED_TOTAL_PART_AREA_MM2 = 189 * 126
-
-# 0.01 = 1 %
 MAX_TOTAL_AREA_ERROR_RATIO = 0.01
 
 
@@ -206,13 +223,16 @@ COLOR_CORNER_2 = (255, 255, 0)
 COLOR_CORNER_3 = (255, 0, 255)
 
 COLOR_A4_POINT = (0, 165, 255)
+COLOR_REFERENCE_POINT = (255, 128, 0)
 COLOR_A4_TEXT = (0, 165, 255)
 COLOR_A4_POLYLINE = (255, 255, 255)
+COLOR_REFERENCE_POLYLINE = (255, 128, 0)
 COLOR_STATUS_TEXT = (255, 255, 255)
 
 CORNER_CIRCLE_RADIUS_PX = 6
 MARKER_CENTER_RADIUS_PX = 6
 A4_CORNER_RADIUS_PX = 10
+REFERENCE_CORNER_RADIUS_PX = 7
 
 CORNER_TEXT_OFFSET_X = 8
 CORNER_TEXT_OFFSET_Y = -8
@@ -220,19 +240,32 @@ CORNER_TEXT_OFFSET_Y = -8
 TEXT_FONT_SCALE = 0.8
 TEXT_THICKNESS = 2
 
+# Koordinatensystem / Raster in der parts_debug-Ausgabe
+DEBUG_DRAW_COORDINATE_GRID = True
+DEBUG_GRID_SPACING_MM = 10.0       # 10 mm = 1 cm
+DEBUG_GRID_MAJOR_SPACING_MM = 50.0 # staerkere Linie alle 5 cm
+DEBUG_GRID_ALPHA = 0.35
+DEBUG_AXIS_LENGTH_MM = 50.0
+
+COLOR_GRID_MINOR = (120, 120, 120)
+COLOR_GRID_MAJOR = (180, 180, 180)
+COLOR_AXIS_X = (0, 0, 255)
+COLOR_AXIS_Y = (0, 255, 0)
+COLOR_AXIS_ORIGIN = (255, 255, 255)
+COLOR_AXIS_TEXT = (255, 255, 255)
+
 
 # ============================================================
 # DATEI- UND ALLGEMEINE HILFSFUNKTIONEN
 # ============================================================
 
 def buildOutputPath(filename):
-    outputDirPath = Path(OUTPUT_DIR)
-    outputDirPath.mkdir(parents=True, exist_ok=True)
-    return outputDirPath / filename
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    return OUTPUT_DIR / filename
 
 
-def buildDirPath(pathString):
-    path = Path(pathString)
+def buildDirPath(path):
+    path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -243,6 +276,9 @@ def saveJson(path, data):
 
 
 def savePngImage(path, image):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     success = cv2.imwrite(str(path), image)
 
     if not success:
@@ -272,10 +308,8 @@ def showImage(windowName, image, waitMs):
 
 
 def showDebugImage(windowName, image):
-    if not DEBUG_SHOW_IMAGES:
-        return
-
-    showImage(windowName, image, DEBUG_WAIT_MS)
+    if DEBUG_SHOW_IMAGES:
+        showImage(windowName, image, DEBUG_WAIT_MS)
 
 
 def rotateImageIfNeeded(imageBgr):
@@ -310,19 +344,7 @@ def captureImageFromCamera():
             main={"size": (IMAGE_WIDTH, IMAGE_HEIGHT)}
         )
         picam2.configure(cameraConfig)
-
-        # Test gegen Überbelichtung
-        # ExposureTime ist in Mikrosekunden:
-        # 5000  = dunkler
-        # 8000  = mittel
-        # 12000 = heller
-        picam2.set_controls({
-            "AeEnable": False,
-            "AwbEnable": False,
-            "ExposureTime": 16000,
-            "AnalogueGain": 1.0,
-            "ColourGains": (1.5, 1.5),
-        })
+        picam2.set_controls(CAMERA_CONTROLS)
 
         print("Starte Kamera...")
         picam2.start()
@@ -338,7 +360,7 @@ def captureImageFromCamera():
         totalPixels = grayImage.shape[0] * grayImage.shape[1]
         overexposedRatio = overexposedPixels / totalPixels
 
-        print(f"Überbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
+        print(f"Ueberbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
 
         return imageBgr
 
@@ -372,7 +394,7 @@ def getInputImage():
         if isPiCameraAvailable():
             return captureImageFromCamera()
 
-        print("Keine Picamera2-Unterstützung auf dieser Maschine, nutze Datei.")
+        print("Keine Picamera2-Unterstuetzung auf dieser Maschine, nutze Datei.")
         return loadImageFromFile()
 
     if IMAGE_SOURCE == "file":
@@ -382,7 +404,7 @@ def getInputImage():
 
 
 # ============================================================
-# ARUCO / A4-ERKENNUNG
+# ARUCO / A4-ERKENNUNG MIT OFFSET
 # ============================================================
 
 def detectArucoMarkers(imageBgr):
@@ -391,15 +413,12 @@ def detectArucoMarkers(imageBgr):
     arucoDetector = cv2.aruco.ArucoDetector(arucoDictionary, arucoParameters)
 
     cornersList, ids, rejectedCandidates = arucoDetector.detectMarkers(imageBgr)
-
     detectedMarkers = {}
 
     if ids is None:
         return detectedMarkers, rejectedCandidates
 
-    idsFlat = ids.flatten()
-
-    for i, markerId in enumerate(idsFlat):
+    for i, markerId in enumerate(ids.flatten()):
         if markerId not in REQUIRED_IDS:
             continue
 
@@ -407,48 +426,136 @@ def detectArucoMarkers(imageBgr):
 
         detectedMarkers[int(markerId)] = {
             "id": int(markerId),
-            "corners": markerCorners
+            "corners": markerCorners,
         }
 
     return detectedMarkers, rejectedCandidates
 
 
-def getA4CornerIndexForMarker(markerId):
-    if MARKER_POSITION_MODE == "inside":
-        return markerId
-
-    if MARKER_POSITION_MODE == "outside":
-        outsideCornerMap = {
-            0: 3,
-            1: 2,
-            2: 1,
-            3: 0,
-        }
-
-        return outsideCornerMap[markerId]
-
-    raise ValueError('MARKER_POSITION_MODE muss "inside" oder "outside" sein.')
-
-
-def extractA4Corners(detectedMarkers):
+def validateDetectedMarkers(detectedMarkers):
     missingIds = [markerId for markerId in REQUIRED_IDS if markerId not in detectedMarkers]
 
     if missingIds:
-        raise RuntimeError(f"Nicht alle benötigten Marker wurden erkannt. Fehlend: {missingIds}")
+        raise RuntimeError(f"Nicht alle benoetigten Marker wurden erkannt. Fehlend: {missingIds}")
 
 
+def getReferenceCornersFromMarkers(detectedMarkers):
+    validateDetectedMarkers(detectedMarkers)
 
-    a4CornerBottomLeft = detectedMarkers[2]["corners"][1]
-    a4CornerTopRight = detectedMarkers[0]["corners"][3]
-    a4CornerBottomRight = detectedMarkers[1]["corners"][2]
-    a4CornerTopLeft = detectedMarkers[3]["corners"][0]
+    referenceCorners = {}
 
-    return {
-        "bottom_left": a4CornerBottomLeft.astype(np.float32),
-        "top_left": a4CornerTopLeft.astype(np.float32),
-        "top_right": a4CornerTopRight.astype(np.float32),
-        "bottom_right": a4CornerBottomRight.astype(np.float32),
+    for cornerName, mapping in REFERENCE_CORNER_FROM_MARKER.items():
+        markerId = mapping["marker_id"]
+        cornerIndex = mapping["corner_index"]
+
+        markerCorners = detectedMarkers[markerId]["corners"]
+        referenceCorners[cornerName] = markerCorners[cornerIndex].astype(np.float32)
+
+    return referenceCorners
+
+
+def getFrameSizeMm():
+    frameWidthMm = A4_WIDTH_MM + FRAME_OFFSET_LEFT_MM + FRAME_OFFSET_RIGHT_MM
+    frameHeightMm = A4_HEIGHT_MM + FRAME_OFFSET_TOP_MM + FRAME_OFFSET_BOTTOM_MM
+
+    if frameWidthMm <= 0 or frameHeightMm <= 0:
+        raise ValueError("Rahmen-/A4-Groesse ungueltig. Offsets pruefen.")
+
+    return frameWidthMm, frameHeightMm
+
+
+def buildReferenceCornerArrayImage(referenceCorners):
+    return np.array(
+        [
+            referenceCorners["top_left"],
+            referenceCorners["top_right"],
+            referenceCorners["bottom_right"],
+            referenceCorners["bottom_left"],
+        ],
+        dtype=np.float32,
+    )
+
+
+def buildReferenceCornerArrayMm():
+    frameWidthMm, frameHeightMm = getFrameSizeMm()
+
+    return np.array(
+        [
+            [0.0, 0.0],
+            [frameWidthMm, 0.0],
+            [frameWidthMm, frameHeightMm],
+            [0.0, frameHeightMm],
+        ],
+        dtype=np.float32,
+    )
+
+
+def buildA4CornerArrayInReferenceMm():
+    left = FRAME_OFFSET_LEFT_MM
+    right = FRAME_OFFSET_LEFT_MM + A4_WIDTH_MM
+    top = FRAME_OFFSET_TOP_MM
+    bottom = FRAME_OFFSET_TOP_MM + A4_HEIGHT_MM
+
+    basePoints = {
+        "top_left": np.array([left, top], dtype=np.float32),
+        "top_right": np.array([right, top], dtype=np.float32),
+        "bottom_right": np.array([right, bottom], dtype=np.float32),
+        "bottom_left": np.array([left, bottom], dtype=np.float32),
     }
+
+    result = {}
+
+    for cornerName, point in basePoints.items():
+        extraOffset = A4_CORNER_EXTRA_OFFSETS_MM[cornerName]
+        result[cornerName] = np.array(
+            [
+                point[0] + float(extraOffset["x"]),
+                point[1] + float(extraOffset["y"]),
+            ],
+            dtype=np.float32,
+        )
+
+    return result
+
+
+def transformPoints(points, homography):
+    pointsArray = np.array(points, dtype=np.float32).reshape(-1, 1, 2)
+    transformed = cv2.perspectiveTransform(pointsArray, homography)
+    return transformed.reshape(-1, 2)
+
+
+def extractA4Corners(detectedMarkers):
+    # 1. Aus den Markern die gemessene Referenz-/Rahmenflaeche im Bild holen.
+    referenceCorners = getReferenceCornersFromMarkers(detectedMarkers)
+
+    # 2. Homographie: Referenz-/Rahmen-mm -> Bildpixel.
+    referenceImagePoints = buildReferenceCornerArrayImage(referenceCorners)
+    referenceMmPoints = buildReferenceCornerArrayMm()
+    hReferenceMmToImage = cv2.getPerspectiveTransform(referenceMmPoints, referenceImagePoints)
+
+    # 3. Echte A4-Ecken innerhalb der Referenz-/Rahmenflaeche in mm definieren.
+    a4CornersReferenceMm = buildA4CornerArrayInReferenceMm()
+    a4ReferenceMmArray = np.array(
+        [
+            a4CornersReferenceMm["top_left"],
+            a4CornersReferenceMm["top_right"],
+            a4CornersReferenceMm["bottom_right"],
+            a4CornersReferenceMm["bottom_left"],
+        ],
+        dtype=np.float32,
+    )
+
+    # 4. Echte A4-Ecken zurueck ins Bild projizieren.
+    a4ImageArray = transformPoints(a4ReferenceMmArray, hReferenceMmToImage)
+
+    a4Corners = {
+        "top_left": a4ImageArray[0].astype(np.float32),
+        "top_right": a4ImageArray[1].astype(np.float32),
+        "bottom_right": a4ImageArray[2].astype(np.float32),
+        "bottom_left": a4ImageArray[3].astype(np.float32),
+    }
+
+    return a4Corners, referenceCorners
 
 
 # ============================================================
@@ -469,7 +576,7 @@ def buildImageCornerArray(a4Corners):
             a4Corners["bottom_right"],
             a4Corners["bottom_left"],
         ],
-        dtype=np.float32
+        dtype=np.float32,
     )
 
 
@@ -483,106 +590,41 @@ def buildWarpCornerArrayPx():
             [warpWidthPx - 1, warpHeightPx - 1],
             [0, warpHeightPx - 1],
         ],
-        dtype=np.float32
+        dtype=np.float32,
     )
 
 
-def buildA4CornerArrayMm():
-    return np.array(
-        [
-            [0.0, A4_HEIGHT_MM],
-            [A4_WIDTH_MM, A4_HEIGHT_MM],
-            [A4_WIDTH_MM, 0.0],
-            [0.0, 0.0],
-        ],
-        dtype=np.float32
-    )
-
-
-def computeHomographies(a4Corners):
+def computeHomographyImageToWarp(a4Corners):
     imagePoints = buildImageCornerArray(a4Corners)
     warpPointsPx = buildWarpCornerArrayPx()
-    a4PointsMm = buildA4CornerArrayMm()
-
-    hImageToWarp = cv2.getPerspectiveTransform(imagePoints, warpPointsPx)
-    hImageToA4Mm = cv2.getPerspectiveTransform(imagePoints, a4PointsMm)
-
-    return hImageToWarp, hImageToA4Mm
+    return cv2.getPerspectiveTransform(imagePoints, warpPointsPx)
 
 
 def warpImageToA4(imageBgr, hImageToWarp):
     warpWidthPx, warpHeightPx = getWarpSizePx()
 
-    warpedImageBgr = cv2.warpPerspective(
+    return cv2.warpPerspective(
         imageBgr,
         hImageToWarp,
-        (warpWidthPx, warpHeightPx)
+        (warpWidthPx, warpHeightPx),
     )
 
-    return warpedImageBgr
 
-
-def validateCoordinateOrigin():
-    validOrigins = ["bottom_left", "top_left", "top_right", "bottom_right"]
-
-    if COORDINATE_ORIGIN not in validOrigins:
-        raise ValueError(
-            'COORDINATE_ORIGIN muss "bottom_left", "top_left", "top_right" oder "bottom_right" sein.'
-        )
-
-
-def warpPxToA4Mm(xPx, yPx):
-    validateCoordinateOrigin()
-
-    xFromLeftMm = float(xPx) / PX_PER_MM
-    yFromTopMm = float(yPx) / PX_PER_MM
-
-    if COORDINATE_ORIGIN == "bottom_left":
-        xMm = xFromLeftMm
-        yMm = A4_HEIGHT_MM - yFromTopMm
-
-    elif COORDINATE_ORIGIN == "top_left":
-        xMm = xFromLeftMm
-        yMm = yFromTopMm
-
-    elif COORDINATE_ORIGIN == "top_right":
-        xMm = A4_WIDTH_MM - xFromLeftMm
-        yMm = yFromTopMm
-
-    elif COORDINATE_ORIGIN == "bottom_right":
-        xMm = A4_WIDTH_MM - xFromLeftMm
-        yMm = A4_HEIGHT_MM - yFromTopMm
-
-    else:
-        raise ValueError(
-            'COORDINATE_ORIGIN muss "bottom_left", "top_left", "top_right" oder "bottom_right" sein.'
-        )
-
-    return xMm, yMm
-
-def warpPxToA4Px(xPx, yPx):
-
-    warpWidthPx, warpHeightPx = getWarpSizePx()
+def warpPxToOutputPxTopRight(xPx, yPx):
+    warpWidthPx, _ = getWarpSizePx()
 
     xA4Px = (warpWidthPx - 1) - float(xPx)
     yA4Px = float(yPx)
 
     return xA4Px, yA4Px
 
+
+def outputPxToOutputMm(xPx, yPx):
+    return float(xPx) / PX_PER_MM, float(yPx) / PX_PER_MM
+
+
 def buildCoordinateOriginDescription():
-    if COORDINATE_ORIGIN == "bottom_left":
-        return "origin bottom_left, x right, y up"
-
-    if COORDINATE_ORIGIN == "top_left":
-        return "origin top_left, x right, y down"
-
-    if COORDINATE_ORIGIN == "top_right":
-        return "origin top_right, x left, y down"
-
-    if COORDINATE_ORIGIN == "bottom_right":
-        return "origin bottom_right, x left, y up"
-
-    return "origin invalid"
+    return "origin top_right, x left, y down"
 
 
 # ============================================================
@@ -611,7 +653,6 @@ def applyIgnoreBorder(binaryMask):
         return binaryMask
 
     maskedBinaryMask = binaryMask.copy()
-
     imageHeight, imageWidth = maskedBinaryMask.shape[:2]
 
     maskedBinaryMask[0:borderPx, :] = 0
@@ -633,21 +674,16 @@ def fillMaskContourHoles(binaryMask):
 
 def buildPartsMask(warpedImageBgr):
     grayImage = cv2.cvtColor(warpedImageBgr, cv2.COLOR_BGR2GRAY)
-
     blurKernelSize = ensureOddKernelSize(GAUSSIAN_BLUR_KERNEL_SIZE)
 
-    blurredImage = cv2.GaussianBlur(
-        grayImage,
-        (blurKernelSize, blurKernelSize),
-        0
-    )
+    blurredImage = cv2.GaussianBlur(grayImage, (blurKernelSize, blurKernelSize), 0)
 
     if SEGMENTATION_THRESHOLD_MODE == "fixed":
         _, binaryMask = cv2.threshold(
             blurredImage,
             THRESHOLD_VALUE,
             255,
-            cv2.THRESH_BINARY_INV
+            cv2.THRESH_BINARY_INV,
         )
 
     elif SEGMENTATION_THRESHOLD_MODE == "otsu":
@@ -655,7 +691,7 @@ def buildPartsMask(warpedImageBgr):
             blurredImage,
             0,
             255,
-            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU,
         )
 
     elif SEGMENTATION_THRESHOLD_MODE == "adaptive":
@@ -667,7 +703,7 @@ def buildPartsMask(warpedImageBgr):
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV,
             adaptiveBlockSize,
-            ADAPTIVE_THRESHOLD_C
+            ADAPTIVE_THRESHOLD_C,
         )
 
     else:
@@ -692,9 +728,7 @@ def computeContourCentroid(contour):
 
     if moments["m00"] == 0:
         x, y, w, h = cv2.boundingRect(contour)
-        centroidX = x + (w / 2.0)
-        centroidY = y + (h / 2.0)
-        return centroidX, centroidY
+        return x + (w / 2.0), y + (h / 2.0)
 
     centroidX = moments["m10"] / moments["m00"]
     centroidY = moments["m01"] / moments["m00"]
@@ -722,7 +756,7 @@ def findAllValidParts(binaryMask):
         centroidX, centroidY = computeContourCentroid(contour)
         x, y, w, h = cv2.boundingRect(contour)
 
-        partInfo = {
+        detectedParts.append({
             "contour": contour,
             "areaPx": float(areaPx),
             "centroidX": float(centroidX),
@@ -731,16 +765,18 @@ def findAllValidParts(binaryMask):
             "bboxY": int(y),
             "bboxW": int(w),
             "bboxH": int(h),
-        }
-
-        detectedParts.append(partInfo)
+        })
 
     return detectedParts
 
 
-def sortPartsByA4YThenA4X(detectedParts):
+def sortPartsByOutputYThenOutputX(detectedParts):
     def sortKey(partInfo):
-        centroidXmm, centroidYmm = warpPxToA4Mm(partInfo["centroidX"], partInfo["centroidY"])
+        centroidXpxOutput, centroidYpxOutput = warpPxToOutputPxTopRight(
+            partInfo["centroidX"],
+            partInfo["centroidY"],
+        )
+        centroidXmm, centroidYmm = outputPxToOutputMm(centroidXpxOutput, centroidYpxOutput)
         return centroidYmm, centroidXmm
 
     return sorted(detectedParts, key=sortKey)
@@ -748,40 +784,33 @@ def sortPartsByA4YThenA4X(detectedParts):
 
 def addDerivedPartValues(detectedParts):
     for i, partInfo in enumerate(detectedParts):
-        centroidXpxA4, centroidYpxA4 = warpPxToA4Px(
+        centroidXpxOutput, centroidYpxOutput = warpPxToOutputPxTopRight(
             partInfo["centroidX"],
-            partInfo["centroidY"]
+            partInfo["centroidY"],
         )
-
-        centroidXmm = centroidXpxA4 / PX_PER_MM
-        centroidYmm = centroidYpxA4 / PX_PER_MM
-
+        centroidXmm, centroidYmm = outputPxToOutputMm(centroidXpxOutput, centroidYpxOutput)
         areaMm2 = partInfo["areaPx"] / (PX_PER_MM ** 2)
 
         partInfo["index"] = i + 1
         partInfo["partName"] = f"part_{i + 1:02d}"
 
-        # A4-Pixel, Ursprung oben rechts
-        partInfo["centroidXpx"] = float(centroidXpxA4)
-        partInfo["centroidYpx"] = float(centroidYpxA4)
+        # Output-Pixel, Ursprung oben rechts
+        partInfo["centroidXpx"] = float(centroidXpxOutput)
+        partInfo["centroidYpx"] = float(centroidYpxOutput)
 
-        # A4-mm, Ursprung oben rechts
+        # Output-mm, Ursprung oben rechts
         partInfo["centroidXmm"] = float(centroidXmm)
         partInfo["centroidYmm"] = float(centroidYmm)
 
         partInfo["areaMm2"] = float(areaMm2)
 
+
 # ============================================================
-# FLÄCHENVALIDIERUNG
+# FLAECHENVALIDIERUNG
 # ============================================================
 
 def computeTotalPartsAreaMm2(detectedParts):
-    totalAreaMm2 = 0.0
-
-    for partInfo in detectedParts:
-        totalAreaMm2 += partInfo["areaMm2"]
-
-    return totalAreaMm2
+    return sum(partInfo["areaMm2"] for partInfo in detectedParts)
 
 
 def buildAreaValidationData(detectedParts):
@@ -791,7 +820,6 @@ def buildAreaValidationData(detectedParts):
     areaErrorMm2 = totalAreaMm2 - expectedAreaMm2
     areaErrorRatio = areaErrorMm2 / expectedAreaMm2
     areaErrorPercent = areaErrorRatio * 100.0
-
     isValid = abs(areaErrorRatio) <= MAX_TOTAL_AREA_ERROR_RATIO
 
     return {
@@ -806,9 +834,9 @@ def buildAreaValidationData(detectedParts):
 
 def printAreaValidationInfo(areaValidationData):
     print()
-    print("Flächenvalidierung:")
-    print(f"- Erwartete Gesamtfläche: {areaValidationData['expected_total_area_mm2']:.0f} mm2")
-    print(f"- Gemessene Gesamtfläche: {areaValidationData['measured_total_area_mm2']:.0f} mm2")
+    print("Flaechenvalidierung:")
+    print(f"- Erwartete Gesamtflaeche: {areaValidationData['expected_total_area_mm2']:.0f} mm2")
+    print(f"- Gemessene Gesamtflaeche: {areaValidationData['measured_total_area_mm2']:.0f} mm2")
     print(f"- Fehler: {areaValidationData['area_error_mm2']:.0f} mm2")
     print(f"- Fehler: {areaValidationData['area_error_percent']:.2f} %")
     print(f"- Erlaubt: +/- {areaValidationData['max_allowed_error_percent']:.2f} %")
@@ -847,9 +875,7 @@ def buildSinglePartMask(fullBinaryMask, contour, cropBounds):
     cv2.drawContours(singleMask, [contour], -1, 255, -1)
 
     x1, y1, x2, y2 = cropBounds
-    croppedSingleMask = singleMask[y1:y2, x1:x2].copy()
-
-    return croppedSingleMask
+    return singleMask[y1:y2, x1:x2].copy()
 
 
 def buildPartCutout(croppedImageBgr, croppedSingleMask):
@@ -870,15 +896,10 @@ def savePartOutputs(warpedImageBgr, binaryMask, detectedParts):
             partInfo["bboxX"],
             partInfo["bboxY"],
             partInfo["bboxW"],
-            partInfo["bboxH"]
+            partInfo["bboxH"],
         )
 
-        croppedSingleMask = buildSinglePartMask(
-            binaryMask,
-            partInfo["contour"],
-            cropBounds
-        )
-
+        croppedSingleMask = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
         cutoutImageBgr = buildPartCutout(croppedImageBgr, croppedSingleMask)
 
         outputPartPath = partsDirPath / f"{partInfo['partName']}.png"
@@ -898,16 +919,14 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
     algoInputDirPath = clearAlgoInputFolder()
 
     for i, partInfo in enumerate(detectedParts):
-        croppedSingleMask = buildSinglePartMask(
-            binaryMask,
-            partInfo["contour"],
-            (
-                partInfo["bboxX"],
-                partInfo["bboxY"],
-                partInfo["bboxX"] + partInfo["bboxW"],
-                partInfo["bboxY"] + partInfo["bboxH"],
-            )
+        cropBounds = (
+            partInfo["bboxX"],
+            partInfo["bboxY"],
+            partInfo["bboxX"] + partInfo["bboxW"],
+            partInfo["bboxY"] + partInfo["bboxH"],
         )
+
+        croppedSingleMask = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
 
         algoMaskFilename = f"{ALGO_INPUT_MASK_PREFIX}{i}.png"
         algoMaskPath = algoInputDirPath / algoMaskFilename
@@ -924,11 +943,34 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
 # JSON-EXPORT
 # ============================================================
 
-def buildPartsJsonData(detectedParts, areaValidationData):
+def buildGeometryJsonData():
+    return {
+        "a4_size_mm": {
+            "width": A4_WIDTH_MM,
+            "height": A4_HEIGHT_MM,
+            "area_mm2": round(A4_WIDTH_MM * A4_HEIGHT_MM, 6),
+        },
+        "px_per_mm": PX_PER_MM,
+        "coordinate_system": {
+            "origin": COORDINATE_ORIGIN,
+            "description": buildCoordinateOriginDescription(),
+        },
+        "reference_corner_from_marker": REFERENCE_CORNER_FROM_MARKER,
+        "frame_offsets_mm": {
+            "left": FRAME_OFFSET_LEFT_MM,
+            "right": FRAME_OFFSET_RIGHT_MM,
+            "top": FRAME_OFFSET_TOP_MM,
+            "bottom": FRAME_OFFSET_BOTTOM_MM,
+        },
+        "a4_corner_extra_offsets_mm": A4_CORNER_EXTRA_OFFSETS_MM,
+    }
+
+
+def buildPartsJsonList(detectedParts, includePaths):
     partsJson = []
 
     for partInfo in detectedParts:
-        partsJson.append({
+        partData = {
             "index": partInfo["index"],
             "part_name": partInfo["partName"],
             "centroid_mm": {
@@ -946,34 +988,36 @@ def buildPartsJsonData(detectedParts, areaValidationData):
                 "w": partInfo["bboxW"],
                 "h": partInfo["bboxH"],
             },
-            "image_path": partInfo["outputPath"],
-            "mask_path": partInfo["maskPath"],
-            "cutout_path": partInfo["cutoutPath"],
             "algo_input_mask_filename": partInfo.get("algoInputMaskFilename"),
-            "algo_input_mask_path": partInfo.get("algoInputMaskPath"),
-        })
+        }
 
-    data = {
+        if includePaths:
+            partData.update({
+                "image_path": partInfo.get("outputPath"),
+                "mask_path": partInfo.get("maskPath"),
+                "cutout_path": partInfo.get("cutoutPath"),
+                "algo_input_mask_path": partInfo.get("algoInputMaskPath"),
+            })
+
+        partsJson.append(partData)
+
+    return partsJson
+
+
+def buildDebugJsonData(detectedParts, areaValidationData):
+    geometryData = buildGeometryJsonData()
+
+    return {
         "run_name": RUN_NAME,
         "part_count": len(detectedParts),
         "expected_part_count": EXPECTED_PART_COUNT,
         "part_count_is_valid": len(detectedParts) == EXPECTED_PART_COUNT,
-        "px_per_mm": PX_PER_MM,
-        "a4_size_mm": {
-            "width": A4_WIDTH_MM,
-            "height": A4_HEIGHT_MM,
-            "area_mm2": round(A4_WIDTH_MM * A4_HEIGHT_MM, 6),
-        },
-        "coordinate_system": {
-            "origin": COORDINATE_ORIGIN,
-            "description": buildCoordinateOriginDescription(),
-        },
+        **geometryData,
         "expected_total_part_area": {
             "description": "PREN puzzle area without frame",
             "area_mm2": round(EXPECTED_TOTAL_PART_AREA_MM2, 6),
         },
         "area_validation": areaValidationData,
-        "marker_position_mode": MARKER_POSITION_MODE,
         "segmentation": {
             "threshold_mode": SEGMENTATION_THRESHOLD_MODE,
             "fixed_threshold_value": THRESHOLD_VALUE,
@@ -985,28 +1029,13 @@ def buildPartsJsonData(detectedParts, areaValidationData):
             "fill_contour_holes": FILL_CONTOUR_HOLES,
             "ignore_border_mm": IGNORE_BORDER_MM,
         },
-        "sorting": "smallest_a4_y_then_smallest_a4_x",
-        "parts": partsJson,
+        "sorting": "smallest_output_y_then_smallest_output_x",
+        "parts": buildPartsJsonList(detectedParts, includePaths=True),
     }
-
-    return data
 
 
 def buildAlgoInputJsonData(detectedParts, areaValidationData):
-    partsJson = []
-
-    for partInfo in detectedParts:
-        partsJson.append({
-            "index": partInfo["index"],
-            "mask_filename": partInfo["algoInputMaskFilename"],
-            "centroid_mm": {
-                "x": round(partInfo["centroidXmm"], 6),
-                "y": round(partInfo["centroidYmm"], 6),
-            },
-            "area_mm2": round(partInfo["areaMm2"], 6),
-        })
-
-    data = {
+    return {
         "part_count": len(detectedParts),
         "expected_part_count": EXPECTED_PART_COUNT,
         "part_count_is_valid": len(detectedParts) == EXPECTED_PART_COUNT,
@@ -1019,20 +1048,126 @@ def buildAlgoInputJsonData(detectedParts, areaValidationData):
             "width": A4_WIDTH_MM,
             "height": A4_HEIGHT_MM,
         },
+        "frame_offsets_mm": {
+            "left": FRAME_OFFSET_LEFT_MM,
+            "right": FRAME_OFFSET_RIGHT_MM,
+            "top": FRAME_OFFSET_TOP_MM,
+            "bottom": FRAME_OFFSET_BOTTOM_MM,
+        },
         "expected_total_part_area_mm2": round(EXPECTED_TOTAL_PART_AREA_MM2, 6),
         "area_validation": areaValidationData,
-        "parts": partsJson,
+        "parts": buildPartsJsonList(detectedParts, includePaths=False),
     }
-
-    return data
 
 
 # ============================================================
 # DEBUG-ZEICHNUNGEN
 # ============================================================
 
+def isMajorGridLine(index, spacingPx, majorSpacingPx):
+    if majorSpacingPx <= 0:
+        return False
+
+    distancePx = index * spacingPx
+    return abs(distancePx % majorSpacingPx) < 0.5
+
+
+def drawCoordinateGridDebug(debugImageBgr):
+    if not DEBUG_DRAW_COORDINATE_GRID:
+        return debugImageBgr
+
+    imageHeight, imageWidth = debugImageBgr.shape[:2]
+    overlay = debugImageBgr.copy()
+
+    gridSpacingPx = int(round(DEBUG_GRID_SPACING_MM * PX_PER_MM))
+    majorSpacingPx = int(round(DEBUG_GRID_MAJOR_SPACING_MM * PX_PER_MM))
+
+    if gridSpacingPx <= 0:
+        return debugImageBgr
+
+    # Raster passend zum Output-Koordinatensystem:
+    # Ursprung oben rechts, x nach links, y nach unten.
+    verticalLineIndex = 0
+    x = imageWidth - 1
+    while x >= 0:
+        color = COLOR_GRID_MAJOR if isMajorGridLine(verticalLineIndex, gridSpacingPx, majorSpacingPx) else COLOR_GRID_MINOR
+        thickness = 2 if color == COLOR_GRID_MAJOR else 1
+        cv2.line(overlay, (x, 0), (x, imageHeight - 1), color, thickness)
+        verticalLineIndex += 1
+        x = imageWidth - 1 - verticalLineIndex * gridSpacingPx
+
+    horizontalLineIndex = 0
+    y = 0
+    while y < imageHeight:
+        color = COLOR_GRID_MAJOR if isMajorGridLine(horizontalLineIndex, gridSpacingPx, majorSpacingPx) else COLOR_GRID_MINOR
+        thickness = 2 if color == COLOR_GRID_MAJOR else 1
+        cv2.line(overlay, (0, y), (imageWidth - 1, y), color, thickness)
+        horizontalLineIndex += 1
+        y = horizontalLineIndex * gridSpacingPx
+
+    debugImageBgr = cv2.addWeighted(overlay, DEBUG_GRID_ALPHA, debugImageBgr, 1.0 - DEBUG_GRID_ALPHA, 0)
+
+    axisLengthPx = int(round(DEBUG_AXIS_LENGTH_MM * PX_PER_MM))
+    axisLengthPx = max(gridSpacingPx, axisLengthPx)
+
+    origin = (imageWidth - 1, 0)
+    xAxisEnd = (max(0, imageWidth - 1 - axisLengthPx), 0)
+    yAxisEnd = (imageWidth - 1, min(imageHeight - 1, axisLengthPx))
+
+    cv2.circle(debugImageBgr, origin, 10, COLOR_AXIS_ORIGIN, -1)
+    cv2.arrowedLine(debugImageBgr, origin, xAxisEnd, COLOR_AXIS_X, 4, cv2.LINE_AA, tipLength=0.08)
+    cv2.arrowedLine(debugImageBgr, origin, yAxisEnd, COLOR_AXIS_Y, 4, cv2.LINE_AA, tipLength=0.08)
+
+    cv2.putText(
+        debugImageBgr,
+        "origin (0,0)",
+        (max(10, imageWidth - 230), 35),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        COLOR_AXIS_TEXT,
+        2,
+        cv2.LINE_AA,
+    )
+
+    cv2.putText(
+        debugImageBgr,
+        "+x",
+        (max(10, xAxisEnd[0] - 10), 35),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.9,
+        COLOR_AXIS_X,
+        3,
+        cv2.LINE_AA,
+    )
+
+    cv2.putText(
+        debugImageBgr,
+        "+y",
+        (max(10, imageWidth - 70), min(imageHeight - 10, yAxisEnd[1] + 35)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.9,
+        COLOR_AXIS_Y,
+        3,
+        cv2.LINE_AA,
+    )
+
+    cv2.putText(
+        debugImageBgr,
+        "grid: 1 cm x 1 cm",
+        (20, imageHeight - 25),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        COLOR_AXIS_TEXT,
+        2,
+        cv2.LINE_AA,
+    )
+
+    return debugImageBgr
+
+
 def drawPartsDebug(warpedImageBgr, detectedParts):
     debugImageBgr = warpedImageBgr.copy()
+    debugImageBgr = drawCoordinateGridDebug(debugImageBgr)
 
     for partInfo in detectedParts:
         contour = partInfo["contour"]
@@ -1056,7 +1191,7 @@ def drawPartsDebug(warpedImageBgr, detectedParts):
             PART_TEXT_FONT_SCALE,
             PART_TEXT_COLOR,
             PART_TEXT_THICKNESS,
-            cv2.LINE_AA
+            cv2.LINE_AA,
         )
 
         cv2.putText(
@@ -1067,7 +1202,7 @@ def drawPartsDebug(warpedImageBgr, detectedParts):
             PART_TEXT_FONT_SCALE,
             PART_TEXT_COLOR,
             PART_TEXT_THICKNESS,
-            cv2.LINE_AA
+            cv2.LINE_AA,
         )
 
     cv2.putText(
@@ -1078,33 +1213,32 @@ def drawPartsDebug(warpedImageBgr, detectedParts):
         0.8,
         PART_TEXT_COLOR,
         2,
-        cv2.LINE_AA
+        cv2.LINE_AA,
     )
 
     cv2.putText(
         debugImageBgr,
-        f"coord: {COORDINATE_ORIGIN}",
+        f"coord: {COORDINATE_ORIGIN}, x left, y down",
         (20, 65),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.8,
         PART_TEXT_COLOR,
         2,
-        cv2.LINE_AA
+        cv2.LINE_AA,
     )
 
     cv2.putText(
         debugImageBgr,
-        "sorting: smallest A4-y, then smallest A4-x",
+        "sorting: smallest output-y, then smallest output-x",
         (20, 100),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.8,
         PART_TEXT_COLOR,
         2,
-        cv2.LINE_AA
+        cv2.LINE_AA,
     )
 
     return debugImageBgr
-
 
 def drawMarkerDebug(imageBgr, detectedMarkers):
     debugImageBgr = imageBgr.copy()
@@ -1129,7 +1263,7 @@ def drawMarkerDebug(imageBgr, detectedMarkers):
             TEXT_FONT_SCALE,
             COLOR_MARKER_ID_TEXT,
             TEXT_THICKNESS,
-            cv2.LINE_AA
+            cv2.LINE_AA,
         )
 
         for cornerIndex in range(4):
@@ -1146,55 +1280,87 @@ def drawMarkerDebug(imageBgr, detectedMarkers):
                 0.6,
                 cornerColors[cornerIndex],
                 2,
-                cv2.LINE_AA
+                cv2.LINE_AA,
             )
 
     return debugImageBgr
 
 
-def drawA4CornerDebug(imageBgr, a4Corners):
-    debugImageBgr = imageBgr.copy()
+def drawCornerPolygon(debugImageBgr, corners, colorPolyline, colorPoint, radius, labelPrefix):
+    ptTL = np.round(corners["top_left"]).astype(int)
+    ptTR = np.round(corners["top_right"]).astype(int)
+    ptBR = np.round(corners["bottom_right"]).astype(int)
+    ptBL = np.round(corners["bottom_left"]).astype(int)
 
-    ptBL = np.round(a4Corners["bottom_left"]).astype(int)
-    ptTL = np.round(a4Corners["top_left"]).astype(int)
-    ptTR = np.round(a4Corners["top_right"]).astype(int)
-    ptBR = np.round(a4Corners["bottom_right"]).astype(int)
-
-    a4Polygon = np.array([ptBL, ptTL, ptTR, ptBR], dtype=np.int32)
-    cv2.polylines(debugImageBgr, [a4Polygon.reshape((-1, 1, 2))], True, COLOR_A4_POLYLINE, 2)
+    polygon = np.array([ptTL, ptTR, ptBR, ptBL], dtype=np.int32)
+    cv2.polylines(debugImageBgr, [polygon.reshape((-1, 1, 2))], True, colorPolyline, 2)
 
     labeledPoints = [
-        ("A4 BL", ptBL),
-        ("A4 TL", ptTL),
-        ("A4 TR", ptTR),
-        ("A4 BR", ptBR),
+        (f"{labelPrefix} TL", ptTL),
+        (f"{labelPrefix} TR", ptTR),
+        (f"{labelPrefix} BR", ptBR),
+        (f"{labelPrefix} BL", ptBL),
     ]
 
     for label, pt in labeledPoints:
         x = int(pt[0])
         y = int(pt[1])
 
-        cv2.circle(debugImageBgr, (x, y), A4_CORNER_RADIUS_PX, COLOR_A4_POINT, -1)
-
+        cv2.circle(debugImageBgr, (x, y), radius, colorPoint, -1)
         cv2.putText(
             debugImageBgr,
             label,
             (x + 12, y - 12),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
-            COLOR_A4_TEXT,
+            colorPoint,
             2,
-            cv2.LINE_AA
+            cv2.LINE_AA,
         )
+
+
+def drawA4AndReferenceDebug(imageBgr, a4Corners, referenceCorners):
+    debugImageBgr = imageBgr.copy()
+
+    drawCornerPolygon(
+        debugImageBgr,
+        referenceCorners,
+        COLOR_REFERENCE_POLYLINE,
+        COLOR_REFERENCE_POINT,
+        REFERENCE_CORNER_RADIUS_PX,
+        "REF",
+    )
+
+    drawCornerPolygon(
+        debugImageBgr,
+        a4Corners,
+        COLOR_A4_POLYLINE,
+        COLOR_A4_POINT,
+        A4_CORNER_RADIUS_PX,
+        "A4",
+    )
 
     return debugImageBgr
 
 
-def buildStatusTextLine2():
-    if MARKER_POSITION_MODE == "inside":
-        return "BL=ID0/C0  TL=ID1/C1  TR=ID2/C2  BR=ID3/C3"
+def buildReferenceStatusText():
+    parts = []
 
-    return "BL=ID0/C2  TL=ID1/C3  TR=ID2/C0  BR=ID3/C1"
+    for cornerName in ["top_left", "top_right", "bottom_right", "bottom_left"]:
+        mapping = REFERENCE_CORNER_FROM_MARKER[cornerName]
+        parts.append(f"{cornerName}=ID{mapping['marker_id']}/C{mapping['corner_index']}")
+
+    return "  ".join(parts)
+
+
+def buildOffsetStatusText():
+    return (
+        f"offset L/R/T/B = "
+        f"{FRAME_OFFSET_LEFT_MM:.1f}/"
+        f"{FRAME_OFFSET_RIGHT_MM:.1f}/"
+        f"{FRAME_OFFSET_TOP_MM:.1f}/"
+        f"{FRAME_OFFSET_BOTTOM_MM:.1f} mm"
+    )
 
 
 def buildRotationStatusText():
@@ -1207,17 +1373,19 @@ def buildRotationStatusText():
     return "rotation: none"
 
 
-def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners):
+def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners):
     debugImageBgr = drawMarkerDebug(imageBgr, detectedMarkers)
-    debugImageBgr = drawA4CornerDebug(debugImageBgr, a4Corners)
+    debugImageBgr = drawA4AndReferenceDebug(debugImageBgr, a4Corners, referenceCorners)
 
-    statusText1 = f"A4 corners extracted from marker corners, mode: {MARKER_POSITION_MODE}"
-    statusText2 = buildStatusTextLine2()
-    statusText3 = buildRotationStatusText()
+    statusText1 = "A4 corners calculated from ArUco reference corners plus mm offsets"
+    statusText2 = buildReferenceStatusText()
+    statusText3 = buildOffsetStatusText()
+    statusText4 = buildRotationStatusText()
 
     cv2.putText(debugImageBgr, statusText1, (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
-    cv2.putText(debugImageBgr, statusText2, (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
+    cv2.putText(debugImageBgr, statusText2, (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
     cv2.putText(debugImageBgr, statusText3, (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
+    cv2.putText(debugImageBgr, statusText4, (30, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
 
     return debugImageBgr
 
@@ -1244,14 +1412,27 @@ def printMarkerInfo(detectedMarkers):
             print(f"  Ecke {cornerIndex}: x={x:.1f}, y={y:.1f}")
 
 
-def printA4CornerInfo(a4Corners):
+def printCornerInfo(title, corners):
     print()
-    print("Abgeleitete A4-Bildecken:")
+    print(title)
 
-    for name in ["bottom_left", "top_left", "top_right", "bottom_right"]:
-        x = a4Corners[name][0]
-        y = a4Corners[name][1]
+    for name in ["top_left", "top_right", "bottom_right", "bottom_left"]:
+        x = corners[name][0]
+        y = corners[name][1]
         print(f"- {name}: x={x:.1f}, y={y:.1f}")
+
+
+def printGeometryInfo():
+    frameWidthMm, frameHeightMm = getFrameSizeMm()
+
+    print()
+    print("Geometrie:")
+    print(f"- A4: {A4_WIDTH_MM:.1f} x {A4_HEIGHT_MM:.1f} mm")
+    print(f"- Referenz/Rahmen: {frameWidthMm:.1f} x {frameHeightMm:.1f} mm")
+    print(f"- Offset links: {FRAME_OFFSET_LEFT_MM:.1f} mm")
+    print(f"- Offset rechts: {FRAME_OFFSET_RIGHT_MM:.1f} mm")
+    print(f"- Offset oben: {FRAME_OFFSET_TOP_MM:.1f} mm")
+    print(f"- Offset unten: {FRAME_OFFSET_BOTTOM_MM:.1f} mm")
 
 
 def printCoordinateSystemInfo():
@@ -1261,19 +1442,15 @@ def printCoordinateSystemInfo():
     print(f"- Beschreibung: {buildCoordinateOriginDescription()}")
 
 
-def printHomographyInfo(hImageToWarp, hImageToA4Mm):
+def printHomographyInfo(hImageToWarp):
     print()
     print("Homographie Bild -> Warp-Pixel:")
     print(hImageToWarp)
 
-    print()
-    print("Homographie Bild -> A4-mm:")
-    print(hImageToA4Mm)
-
     warpWidthPx, warpHeightPx = getWarpSizePx()
 
     print()
-    print(f"Warp-Grösse: {warpWidthPx} x {warpHeightPx} px")
+    print(f"Warp-Groesse: {warpWidthPx} x {warpHeightPx} px")
     print(f"PX_PER_MM: {PX_PER_MM}")
 
 
@@ -1288,8 +1465,9 @@ def printPartsInfo(detectedParts):
     for partInfo in detectedParts:
         print(f"- {partInfo['partName']}")
         print(f"  Schwerpunkt A4-mm: x={partInfo['centroidXmm']:.3f}, y={partInfo['centroidYmm']:.3f}")
-        print(f"  Schwerpunkt Warp-Pixel: x={partInfo['centroidX']:.3f}, y={partInfo['centroidY']:.3f}")
-        print(f"  Fläche: {partInfo['areaMm2']:.3f} mm2")
+        print(f"  Schwerpunkt A4-px: x={partInfo['centroidXpx']:.3f}, y={partInfo['centroidYpx']:.3f}")
+        print(f"  Schwerpunkt Warp-Pixel debug: x={partInfo['centroidX']:.3f}, y={partInfo['centroidY']:.3f}")
+        print(f"  Flaeche: {partInfo['areaMm2']:.3f} mm2")
         print(f"  Bounding Box: x={partInfo['bboxX']}, y={partInfo['bboxY']}, w={partInfo['bboxW']}, h={partInfo['bboxH']}")
         print(f"  Bild: {partInfo['outputPath']}")
         print(f"  Maske: {partInfo['maskPath']}")
@@ -1313,20 +1491,17 @@ def main():
     outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
     outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
     outputHImageToWarpPath = buildOutputPath(OUTPUT_H_IMAGE_TO_WARP_PATH)
-    outputHImageToA4MmPath = buildOutputPath(OUTPUT_H_IMAGE_TO_A4_MM_PATH)
 
     try:
-        validateCoordinateOrigin()
-
         imageBgr = getInputImage()
         imageBgr = rotateImageIfNeeded(imageBgr)
 
         savePngImage(outputImagePath, imageBgr)
 
         print(f"Input-Bild gespeichert: {outputImagePath}")
-        print(f"Bildgrösse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
-        print(f"Marker-Modus: {MARKER_POSITION_MODE}")
+        print(f"Bildgroesse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
         print(buildRotationStatusText())
+        printGeometryInfo()
         printCoordinateSystemInfo()
 
         showDebugImage(INPUT_WINDOW_NAME, imageBgr)
@@ -1334,23 +1509,21 @@ def main():
         detectedMarkers, rejectedCandidates = detectArucoMarkers(imageBgr)
         printMarkerInfo(detectedMarkers)
 
-        a4Corners = extractA4Corners(detectedMarkers)
-        printA4CornerInfo(a4Corners)
+        a4Corners, referenceCorners = extractA4Corners(detectedMarkers)
+        printCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
+        printCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
 
-        debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners)
+        debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners)
         savePngImage(outputDebugPath, debugImageBgr)
         print(f"Debug-Bild gespeichert: {outputDebugPath}")
 
         showDebugImage(DEBUG_WINDOW_NAME, debugImageBgr)
 
-        hImageToWarp, hImageToA4Mm = computeHomographies(a4Corners)
-        printHomographyInfo(hImageToWarp, hImageToA4Mm)
+        hImageToWarp = computeHomographyImageToWarp(a4Corners)
+        printHomographyInfo(hImageToWarp)
 
         np.save(str(outputHImageToWarpPath), hImageToWarp)
-        np.save(str(outputHImageToA4MmPath), hImageToA4Mm)
-
         print(f"H gespeichert: {outputHImageToWarpPath}")
-        print(f"H gespeichert: {outputHImageToA4MmPath}")
 
         warpedImageBgr = warpImageToA4(imageBgr, hImageToWarp)
         savePngImage(outputWarpPath, warpedImageBgr)
@@ -1365,7 +1538,7 @@ def main():
         showDebugImage(MASK_WINDOW_NAME, binaryMask)
 
         detectedParts = findAllValidParts(binaryMask)
-        detectedParts = sortPartsByA4YThenA4X(detectedParts)
+        detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
         addDerivedPartValues(detectedParts)
 
         savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
@@ -1379,8 +1552,8 @@ def main():
 
         areaValidationData = buildAreaValidationData(detectedParts)
 
-        jsonData = buildPartsJsonData(detectedParts, areaValidationData)
-        saveJson(outputJsonPath, jsonData)
+        debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
+        saveJson(outputJsonPath, debugJsonData)
         print(f"Debug-JSON gespeichert: {outputJsonPath}")
 
         algoJsonData = buildAlgoInputJsonData(detectedParts, areaValidationData)
