@@ -61,9 +61,9 @@
   },
   "area_validation": {
     "expected_total_area_mm2": 23814,
-    "measured_total_area_mm2": 4775.65,
-    "area_error_mm2": -19038.35,
-    "area_error_percent": -79.94604,
+    "measured_total_area_mm2": 4756.47,
+    "area_error_mm2": -19057.53,
+    "area_error_percent": -80.026581,
     "max_allowed_error_percent": 1.0,
     "is_valid": false
   },
@@ -84,17 +84,17 @@
       "index": 1,
       "part_name": "part_01",
       "centroid_mm": {
-        "x": 245.264123,
-        "y": 66.554573
+        "x": 244.573585,
+        "y": 65.797822
       },
       "centroid_px": {
-        "x": 2452.641232,
-        "y": 665.545728
+        "x": 2445.735847,
+        "y": 657.978223
       },
-      "area_mm2": 1212.96,
+      "area_mm2": 1209.215,
       "bounding_box_px": {
-        "x": 337,
-        "y": 483,
+        "x": 344,
+        "y": 476,
         "w": 360,
         "h": 365
       },
@@ -108,18 +108,18 @@
       "index": 2,
       "part_name": "part_02",
       "centroid_mm": {
-        "x": 115.705294,
-        "y": 69.641225
+        "x": 115.573936,
+        "y": 68.810513
       },
       "centroid_px": {
-        "x": 1157.052942,
-        "y": 696.412254
+        "x": 1155.739358,
+        "y": 688.105135
       },
-      "area_mm2": 1200.63,
+      "area_mm2": 1189.095,
       "bounding_box_px": {
-        "x": 1633,
-        "y": 516,
-        "w": 359,
+        "x": 1636,
+        "y": 507,
+        "w": 356,
         "h": 363
       },
       "algo_input_mask_filename": "piece_1.png",
@@ -132,19 +132,19 @@
       "index": 3,
       "part_name": "part_03",
       "centroid_mm": {
-        "x": 98.624622,
-        "y": 133.539693
+        "x": 98.673708,
+        "y": 132.917029
       },
       "centroid_px": {
-        "x": 986.246219,
-        "y": 1335.396925
+        "x": 986.737076,
+        "y": 1329.170291
       },
-      "area_mm2": 1180.73,
+      "area_mm2": 1173.795,
       "bounding_box_px": {
-        "x": 1804,
-        "y": 1156,
-        "w": 359,
-        "h": 360
+        "x": 1805,
+        "y": 1149,
+        "w": 356,
+        "h": 361
       },
       "algo_input_mask_filename": "piece_2.png",
       "image_path": "/home/pren/projects/pren-puzzle-solver/output/parts/part_03.png",
@@ -156,19 +156,19 @@
       "index": 4,
       "part_name": "part_04",
       "centroid_mm": {
-        "x": 221.903845,
-        "y": 151.785239
+        "x": 221.642521,
+        "y": 151.55283
       },
       "centroid_px": {
-        "x": 2219.038452,
-        "y": 1517.852388
+        "x": 2216.425212,
+        "y": 1515.528296
       },
-      "area_mm2": 1181.33,
+      "area_mm2": 1184.365,
       "bounding_box_px": {
-        "x": 569,
-        "y": 1335,
-        "w": 363,
-        "h": 365
+        "x": 573,
+        "y": 1331,
+        "w": 360,
+        "h": 368
       },
       "algo_input_mask_filename": "piece_3.png",
       "image_path": "/home/pren/projects/pren-puzzle-solver/output/parts/part_04.png",
