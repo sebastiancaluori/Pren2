@@ -10,6 +10,10 @@ _six_pieces = "--six-pieces" in sys.argv
 if _six_pieces:
     sys.argv.remove("--six-pieces")
 
+_no_camera = "--no-camera" in sys.argv
+if _no_camera:
+    sys.argv.remove("--no-camera")
+
 from src.core.pipeline import PuzzlePipeline
 from src.core.config import Config
 from src.utils.logger import setup_logger
@@ -36,14 +40,16 @@ def main():
         if _six_pieces:
             config.vision.num_cuts = 3
 
-        #cam starten
-        logger.info("Starte Kameramodul...")
-        cam_module.main()
-        logger.info("Kameramodul abgeschlossen")
-
-        # Kamera-Eingabe hat Vorrang: input/parts.json vorhanden?
-        puzzle_dir = None
         input_dir = project_root / "input"
+        puzzle_dir = None
+
+        if _no_camera:
+            logger.info("--no-camera: Kameramodul wird übersprungen, verwende vorhandene Eingabe.")
+        else:
+            logger.info("Starte Kameramodul...")
+            cam_module.main()
+            logger.info("Kameramodul abgeschlossen")
+
         if (input_dir / "parts.json").exists():
             puzzle_dir = str(input_dir)
             logger.info(f"Kamera-Eingabe erkannt: {input_dir}")

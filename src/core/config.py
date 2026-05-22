@@ -50,11 +50,13 @@ class ResolutionConfig:
     solver_px_per_mm: float = 1.0  # Solver-Zielaufloesung
     finetune_max_px_per_mm: float = 2.0  # Obergrenze fuer Fine-Tuning
 
-    # Physikalische Abmessungen in mm (A4 = 210x297, A5 = 148x210)
-    a4_width_mm: int = 210
-    a4_height_mm: int = 297
-    a5_width_mm: int = 420  # A5-Quelle = doppelt so breit wie A4-Ziel
-    a5_height_mm: int = 297
+    # Physikalische Abmessungen in mm
+    # a4 = Zielbereich (physisches A5-Blatt: 148x210)
+    # a5 = Quellbereich (physisches A4-Blatt, Kamera: 297x210 Querformat)
+    a4_width_mm: int = 129  # Ziel (A5-Blatt, Querformat: Breite)
+    a4_height_mm: int = 191  # Ziel (A5-Blatt: Höhe)
+    a5_width_mm: int = 297  # Quelle (A4-Blatt, Querformat: Breite)
+    a5_height_mm: int = 210  # Quelle (A4-Blatt: Höhe)
 
     def _dim(self, mm: int, px_per_mm: float) -> int:
         return max(1, int(round(mm * px_per_mm)))
@@ -201,7 +203,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
+    enabled: bool = False  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass

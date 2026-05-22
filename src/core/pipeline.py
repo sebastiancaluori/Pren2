@@ -309,11 +309,10 @@ class PuzzlePipeline:
 
         # Auflösung aus JSON übernehmen und alle abhängigen Komponenten neu initialisieren
         self.config.resolution.native_px_per_mm = loader.px_per_mm
-        self.config.resolution.a4_width_mm = loader.a4_width_mm
-        self.config.resolution.a4_height_mm = loader.a4_height_mm
-        # A5-Quellbereich = gleiche Abmessungen wie A4-Ziel (Kamera sieht die Ablage)
+        # Quellbereich (A5 in code = physisches A4-Blatt) kommt aus dem Kamera-JSON
         self.config.resolution.a5_width_mm = loader.a4_width_mm
         self.config.resolution.a5_height_mm = loader.a4_height_mm
+        # Zielbereich (A4 in code = physisches A5-Blatt) ist fix — kommt nicht aus dem Kamera-JSON
         self._init_resolution_components()
 
         self.logger.info(f"  → solver_scale={self.resolution.solver_scale:.4f}, "
