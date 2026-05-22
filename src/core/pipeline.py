@@ -126,6 +126,9 @@ class PuzzlePipeline:
             self.logger.info("Phase 3: Validierung")
             is_valid = self._validate_solution(solution)
 
+            # Print hardware payload before UI blocks
+            self._print_hardware_payload(solution)
+
             # Launch UI even if validation failed (for debugging)
             if self.show_ui and solution:
                 self._launch_ui(solution)
@@ -724,6 +727,31 @@ class PuzzlePipeline:
         self.logger.info(f"  → Konfidenz: {confidence:.1f}%")
 
         return True
+
+    def _print_hardware_payload(self, solution):
+        """Print the raw values that would be sent to the robot."""
+        puzzle_pieces = (solution or {}).get("puzzle_pieces", [])
+        if not puzzle_pieces:
+            return
+        px_per_mm = self.resolution.solver_px_per_mm
+        print("\n" + "=" * 60)
+        print("HARDWARE PAYLOAD (raw values as sent to robot)")
+        print("=" * 60)
+        print(f"{'Piece':<8} {'pick_x_mm':>12} {'pick_y_mm':>12} {'place_x_mm':>12} {'place_y_mm':>12} {'rotation_deg':>14}")
+        print("-" * 60)
+        for p in puzzle_pieces:
+            pick_x = p.pick_pose.x / px_per_mm
+            pick_y = p.pick_pose.y / px_per_mm
+            if p.place_pose:
+                place_x = p.place_pose.x
+                place_y = p.place_pose.y
+                rotation = p.place_pose.theta % 360
+                if rotation > 180:
+                    rotation -= 360
+            else:
+                place_x = place_y = rotation = 0.0
+            print(f"{p.id:<8} {pick_x:>12.2f} {pick_y:>12.2f} {place_x:>12.2f} {place_y:>12.2f} {rotation:>14.1f}")
+        print("=" * 60 + "\n")
 
     def _execute_hardware(self, solution):
         from src.hardware.motion_control.MotionControlCommunication import send_to_robot
