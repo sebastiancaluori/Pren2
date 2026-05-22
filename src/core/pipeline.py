@@ -15,7 +15,7 @@ import numpy as np
 
 from src.solver.fine_tuner import FineTuner
 from src.solver.iterative_solver import IterativeSolver
-from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
+from src.solver.movement_analyzer import MovementAnalyzer, calculate_movement_data_for_visualizer
 from src.solver.piece_analyzer import PieceAnalyzer
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
@@ -447,20 +447,42 @@ class PuzzlePipeline:
         best_guess = coarse_fine_placements
         best_guess_index = len(all_guesses) - 1 if all_guesses else 0
 
-        # Populate place_pose with fine coordinates (precision output for robot)
+        # Populate place_pose with fine coordinates (precision output for robot).
+        # The solver's placement (x, y) is the bounding-box top-left of the piece
+        # at the given rotation.  The robot grabs each piece at its centroid, so
+        # place_pose must also point to the centroid in the target area — computed
+        # from the rotated piece shape at the solver position.
         self.logger.info(f"  → Populating place_pose on {len(puzzle_pieces)} pieces")
         piece_lookup = {int(p.id): p for p in puzzle_pieces}
         for placement in fine_placements:
             piece_id = placement["piece_id"]
             if piece_id in piece_lookup:
                 piece = piece_lookup[piece_id]
-                piece.place_pose = Pose(
-                    x=placement["x"], y=placement["y"], theta=placement["theta"]
+                px, py, theta = placement["x"], placement["y"], placement["theta"]
+
+                # Compute centroid of the rotated shape to get the grab point
+                # the robot must reach in the target area.
+                shape = piece_shapes_fine.get(piece_id)
+                com = (
+                    MovementAnalyzer.calculate_piece_com(shape, px, py, theta)
+                    if shape is not None
+                    else None
                 )
+                if com is None:
+                    # Fallback: bounding-box top-left (pre-fix behaviour)
+                    self.logger.warning(
+                        f"    Piece {piece_id}: centroid unavailable, falling back to top-left"
+                    )
+                    com = (px, py)
+
+                piece.place_pose = Pose(x=com[0], y=com[1], theta=theta)
                 piece.confidence = (
                     1.0 if solution.score > self.tuning.score_threshold else 0.5
                 )
-                self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
+                self.logger.debug(
+                    f"    Piece {piece_id}: bbox=({px:.1f},{py:.1f}) "
+                    f"→ centroid=({com[0]:.1f},{com[1]:.1f}) @ {theta:.1f}°"
+                )
 
         # Print movement instructions using PuzzlePiece objects
         self._print_movement_instructions_from_pieces(puzzle_pieces, surfaces)
@@ -709,7 +731,8 @@ class PuzzlePipeline:
             pieces=puzzle_pieces,
             port=self.config.hardware.serial_port,
             baudrate=self.config.hardware.baud_rate,
-            ppx_to_mm=self.config.resolution.native_px_per_mm,
+            pick_px_per_mm=self.config.resolution.solver_px_per_mm,
+            place_px_per_mm=self.config.resolution.finetune_px_per_mm,
             timeout=5.0,
         )
 

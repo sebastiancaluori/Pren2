@@ -39,11 +39,15 @@ def send_to_robot(
     pieces: list[PuzzlePiece],
     port: str = DEFAULT_PORT,
     baudrate: int = DEFAULT_BAUDRATE,
-    ppx_to_mm: float = PIXEL_TO_MM_SCALE,
+    pick_px_per_mm: float = PIXEL_TO_MM_SCALE,
+    place_px_per_mm: float = PIXEL_TO_MM_SCALE,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> bool:
     """
     Sende Puzzle-Loesung ueber UART an den STM32.
+
+    pick_px_per_mm:  Aufloesung der pick_pose-Koordinaten (solver_px_per_mm).
+    place_px_per_mm: Aufloesung der place_pose-Koordinaten (finetune_px_per_mm).
 
     Baut eine PuzzleCommand protobuf-Nachricht aus den PuzzlePiece-Objekten
     und sendet sie als laengenpraefixiertes Frame ueber die serielle
@@ -56,11 +60,11 @@ def send_to_robot(
     for p in pieces:
         piece = cmd.pieces.add()
         piece.piece_id = int(p.id)
-        piece.pick_x = p.pick_pose.x / ppx_to_mm
-        piece.pick_y = p.pick_pose.y / ppx_to_mm
+        piece.pick_x = p.pick_pose.x / pick_px_per_mm
+        piece.pick_y = p.pick_pose.y / pick_px_per_mm
         if p.place_pose:
-            piece.place_x = p.place_pose.x / ppx_to_mm
-            piece.place_y = p.place_pose.y / ppx_to_mm
+            piece.place_x = p.place_pose.x / place_px_per_mm
+            piece.place_y = p.place_pose.y / place_px_per_mm
             piece.rotation = p.place_pose.theta
         else:
             piece.place_x = 0.0
