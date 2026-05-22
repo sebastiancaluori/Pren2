@@ -48,7 +48,7 @@ def try_edge_placement_on_corners(
     current_placements = corner_placements.copy()
     current_score = corner_only_score
 
-    for edge_piece in edge_pieces:
+    for edge_idx, edge_piece in enumerate(edge_pieces):
 
         best_placement = find_best_edge_placement(
             edge_piece=edge_piece,
@@ -66,7 +66,6 @@ def try_edge_placement_on_corners(
         if best_placement:
             current_placements.append(best_placement)
 
-            # Score the new configuration
             rendered = renderer.render(current_placements, piece_shapes)
             new_score = scorer.score(rendered, target)
             improvement = new_score - current_score
@@ -75,6 +74,12 @@ def try_edge_placement_on_corners(
             all_guesses.append(current_placements.copy())
             all_scores.append(new_score)
             print(f"    edge {edge_piece.id}: {best_placement['side']} score {new_score:.0f} ({improvement:+.0f})")
+
+            # Early exit: if the first edge piece made things worse than the corner-only
+            # baseline, no subsequent edge piece can rescue this layout — skip the rest.
+            if edge_idx == 0 and new_score < corner_only_score:
+                print(f"    → early exit: edge 1 degraded score, skipping remaining edges")
+                break
         else:
             print(f"    edge {edge_piece.id}: no placement found")
 

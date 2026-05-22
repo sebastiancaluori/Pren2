@@ -166,7 +166,7 @@ class SolverTuning:
     max_iterations: int = 600
 
     # --- Edge Placement (edge_placement.py) ---
-    slide_positions: int = 20  # Gitterpositionen pro Achse
+    slide_positions: int = 8  # Gitterpositionen pro Achse
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
         3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
