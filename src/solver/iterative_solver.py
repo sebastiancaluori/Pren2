@@ -247,6 +247,7 @@ class IterativeSolver:
         # ========================================================================
         print(f"  Phase 1: evaluating {min(initial_corner_count, len(all_corner_combinations))} corner layouts...")
 
+        guesses_before_phase1 = len(self.all_guesses)
         corner_evaluations = evaluate_corner_layouts(
             all_combinations=all_corner_combinations,
             initial_corner_count=initial_corner_count,
@@ -257,6 +258,7 @@ class IterativeSolver:
             all_guesses=self.all_guesses,
             all_scores=self.all_scores,
         )
+        guesses_phase1 = len(self.all_guesses) - guesses_before_phase1
 
         initial_corners_to_evaluate = min(
             initial_corner_count, len(all_corner_combinations)
@@ -270,6 +272,7 @@ class IterativeSolver:
         best_overall_score = -float("inf")
         best_overall_solution = None
         layouts_tried = 0
+        guesses_phase2 = 0
 
         # Try multiple corner layouts
         corners_to_try = min(max_corners_to_refine, len(corner_evaluations))
@@ -283,6 +286,7 @@ class IterativeSolver:
                 corner_only_score,
             ) = corner_evaluations[layout_idx]
             layouts_tried += 1
+            guesses_before_layout = len(self.all_guesses)
             print(f"  Layout {layout_idx + 1}/{corners_to_try}: pieces {[int(p.id) for p in current_piece_perm]}, corner score {corner_only_score:.0f}")
 
             # Try edge placement on this corner layout
@@ -290,6 +294,7 @@ class IterativeSolver:
             if self.tuning:
                 edge_kwargs = dict(
                     slide_positions=self.tuning.slide_positions,
+                    slide_patience=self.tuning.slide_patience,
                     center_piece_margin=self.tuning.center_piece_margin,
                 )
             solution_with_edges = try_edge_placement_on_corners(
@@ -307,18 +312,22 @@ class IterativeSolver:
                 **edge_kwargs,
             )
 
+            layout_guesses = len(self.all_guesses) - guesses_before_layout
+            guesses_phase2 += layout_guesses
+
             final_score = solution_with_edges["final_score"]
             final_placements = solution_with_edges["final_placements"]
 
             if final_score > best_overall_score:
                 best_overall_score = final_score
                 best_overall_solution = final_placements
-                print(f"    → score {final_score:.0f} ({final_score - corner_only_score:+.0f}) *** NEW BEST ***")
+                print(f"    → score {final_score:.0f} ({final_score - corner_only_score:+.0f}) [{layout_guesses} guesses] *** NEW BEST ***")
             else:
-                print(f"    → score {final_score:.0f} ({final_score - corner_only_score:+.0f})")
+                print(f"    → score {final_score:.0f} ({final_score - corner_only_score:+.0f}) [{layout_guesses} guesses]")
 
             if final_score >= score_threshold:
                 print(f"  THRESHOLD REACHED: {final_score:.0f} >= {score_threshold} (layout {layout_idx + 1})")
+                print(f"  [STATS] phase1={guesses_phase1} | phase2={guesses_phase2} | total={len(self.all_guesses)}")
 
                 # Update piece poses and return success immediately
                 self._update_piece_poses(puzzle_pieces, final_placements)
@@ -334,6 +343,7 @@ class IterativeSolver:
                 )
 
         print(f"  Best: {best_overall_score:.0f} after {layouts_tried} layouts | guesses: {len(self.all_guesses)} | success: {best_overall_score >= score_threshold}")
+        print(f"  [STATS] phase1={guesses_phase1} | phase2={guesses_phase2} | avg/layout={guesses_phase2 // max(1, layouts_tried)}")
 
         # Update piece poses with best solution
         self._update_piece_poses(puzzle_pieces, best_overall_solution)

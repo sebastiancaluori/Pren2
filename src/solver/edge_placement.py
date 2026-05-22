@@ -24,7 +24,8 @@ def try_edge_placement_on_corners(
     scorer,
     all_guesses,
     all_scores,
-    slide_positions: int = 20,
+    slide_positions: int = 8,
+    slide_patience: int = 3,
     center_piece_margin: int = 50,
 ) -> dict:
     """Try smart edge placement on a specific corner layout."""
@@ -49,7 +50,7 @@ def try_edge_placement_on_corners(
     current_score = corner_only_score
 
     for edge_idx, edge_piece in enumerate(edge_pieces):
-
+        guesses_before_edge = len(all_guesses)
         best_placement = find_best_edge_placement(
             edge_piece=edge_piece,
             piece_shapes=piece_shapes,
@@ -61,6 +62,7 @@ def try_edge_placement_on_corners(
             all_guesses=all_guesses,
             all_scores=all_scores,
             slide_positions=slide_positions,
+            slide_patience=slide_patience,
         )
 
         if best_placement:
@@ -73,7 +75,8 @@ def try_edge_placement_on_corners(
 
             all_guesses.append(current_placements.copy())
             all_scores.append(new_score)
-            print(f"    edge {edge_piece.id}: {best_placement['side']} score {new_score:.0f} ({improvement:+.0f})")
+            edge_guesses = len(all_guesses) - guesses_before_edge
+            print(f"    edge {edge_piece.id}: {best_placement['side']} score {new_score:.0f} ({improvement:+.0f}) [{edge_guesses} guesses]")
 
             # Early exit: if the first edge piece made things worse than the corner-only
             # baseline, no subsequent edge piece can rescue this layout — skip the rest.
@@ -122,7 +125,8 @@ def find_best_edge_placement(
     scorer,
     all_guesses,
     all_scores,
-    slide_positions: int = 20,
+    slide_positions: int = 8,
+    slide_patience: int = 3,
 ) -> Optional[dict]:
     """
     Smart edge placement:
@@ -183,6 +187,7 @@ def find_best_edge_placement(
             all_guesses=all_guesses,
             all_scores=all_scores,
             num_positions=slide_positions,
+            patience=slide_patience,
         )
 
         if optimized["score"] > best_score:
@@ -204,7 +209,8 @@ def slide_along_axis(
     scorer,
     all_guesses,
     all_scores,
-    num_positions: int = 20,
+    num_positions: int = 8,
+    patience: int = 3,
 ) -> dict:
     """
     Slide piece along its axis (vertical or horizontal) to find best position.
@@ -221,10 +227,10 @@ def slide_along_axis(
 
     best_placement = initial_placement.copy()
     best_score = -float("inf")
+    no_improve_streak = 0
 
     # Determine search range
     if axis_type == "vertical":
-        # Slide up/down (vary y)
         positions = np.linspace(0, max(0, height - piece_h), num=num_positions)
 
         for y_pos in positions:
@@ -235,16 +241,19 @@ def slide_along_axis(
             rendered = renderer.render(test_placements, piece_shapes)
             score = scorer.score(rendered, target)
 
-            # ADD TO VISUALIZER
             all_guesses.append(test_placements.copy())
             all_scores.append(score)
 
             if score > best_score:
                 best_score = score
                 best_placement = test_placement.copy()
+                no_improve_streak = 0
+            else:
+                no_improve_streak += 1
+                if no_improve_streak >= patience:
+                    break
 
     else:  # horizontal
-        # Slide left/right (vary x)
         positions = np.linspace(0, max(0, width - piece_w), num=num_positions)
 
         for x_pos in positions:
@@ -255,12 +264,16 @@ def slide_along_axis(
             rendered = renderer.render(test_placements, piece_shapes)
             score = scorer.score(rendered, target)
 
-            # ADD TO VISUALIZER
             all_guesses.append(test_placements.copy())
             all_scores.append(score)
 
             if score > best_score:
                 best_score = score
                 best_placement = test_placement.copy()
+                no_improve_streak = 0
+            else:
+                no_improve_streak += 1
+                if no_improve_streak >= patience:
+                    break
 
     return {"placement": best_placement, "score": best_score}

@@ -701,6 +701,18 @@ class PuzzlePipeline:
             weight_multiplier=self._finetune_weight,
         )
 
+        # Dilation auf fine-Aufloesung anwenden (gleiche physikalische mm wie beim Solver)
+        dilation_px = int(round(self.config.tuning.gap_dilation_mm * fs))
+        if dilation_px > 0:
+            import cv2 as _cv2
+            kernel = _cv2.getStructuringElement(
+                _cv2.MORPH_ELLIPSE, (2 * dilation_px + 1, 2 * dilation_px + 1)
+            )
+            piece_shapes_fine = {
+                pid: _cv2.dilate(mask.astype(np.uint8), kernel).astype(mask.dtype)
+                for pid, mask in piece_shapes_fine.items()
+            }
+
         raw = self.config.tuning  # unscaled defaults
         tuner = FineTuner(
             renderer=fine_renderer,
