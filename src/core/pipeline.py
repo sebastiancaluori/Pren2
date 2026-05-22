@@ -475,13 +475,16 @@ class PuzzlePipeline:
                     )
                     com = (px, py)
 
-                piece.place_pose = Pose(x=com[0], y=com[1], theta=theta)
+                # Convert from fine pixels to mm (same unit as pick_pose)
+                place_x_mm = com[0] / self.resolution.finetune_px_per_mm
+                place_y_mm = com[1] / self.resolution.finetune_px_per_mm
+                piece.place_pose = Pose(x=place_x_mm, y=place_y_mm, theta=theta)
                 piece.confidence = (
                     1.0 if solution.score > self.tuning.score_threshold else 0.5
                 )
                 self.logger.debug(
                     f"    Piece {piece_id}: bbox=({px:.1f},{py:.1f}) "
-                    f"→ centroid=({com[0]:.1f},{com[1]:.1f}) @ {theta:.1f}°"
+                    f"→ centroid=({place_x_mm:.1f},{place_y_mm:.1f})mm @ {theta:.1f}°"
                 )
 
         # Print movement instructions using PuzzlePiece objects
@@ -732,7 +735,7 @@ class PuzzlePipeline:
             port=self.config.hardware.serial_port,
             baudrate=self.config.hardware.baud_rate,
             pick_px_per_mm=self.config.resolution.solver_px_per_mm,
-            place_px_per_mm=self.config.resolution.finetune_px_per_mm,
+            place_px_per_mm=self.config.resolution.solver_px_per_mm,
             timeout=5.0,
         )
 

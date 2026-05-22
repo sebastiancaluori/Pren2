@@ -46,8 +46,10 @@ def send_to_robot(
     """
     Sende Puzzle-Loesung ueber UART an den STM32.
 
-    pick_px_per_mm:  Aufloesung der pick_pose-Koordinaten (solver_px_per_mm).
-    place_px_per_mm: Aufloesung der place_pose-Koordinaten (finetune_px_per_mm).
+    pick_pose und place_pose sind beide in mm gespeichert (nach Umrechnung in
+    pipeline.py).  pick_px_per_mm und place_px_per_mm bleiben als Parameter
+    erhalten, werden aber beide mit solver_px_per_mm (= 1.0) aufgerufen, da
+    die Koordinaten bereits in mm vorliegen.
 
     Baut eine PuzzleCommand protobuf-Nachricht aus den PuzzlePiece-Objekten
     und sendet sie als laengenpraefixiertes Frame ueber die serielle
