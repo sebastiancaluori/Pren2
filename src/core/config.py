@@ -47,8 +47,11 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 2.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
-    finetune_max_px_per_mm: float = 10.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
+    solver_px_per_mm: float = 1.0  # Solver-Aufloesung (Render+Score-Schleife)
+    analysis_px_per_mm: float = (
+        5.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
+    )
+    finetune_max_px_per_mm: float = 5.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
     finetune_max_scale: float = 0.5  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
     # Physikalische Abmessungen in mm
@@ -68,6 +71,16 @@ class ResolutionConfig:
     def solver_scale(self) -> float:
         """Skalierungsfaktor Eingang→Solver (< 1 = verkleinern)."""
         return self.solver_px_per_mm / self.native_px_per_mm
+
+    @property
+    def analysis_scale(self) -> float:
+        """Skalierungsfaktor Eingang→Analyse. Wird auf native gekappt (kein Upscaling)."""
+        effective = min(self.analysis_px_per_mm, self.native_px_per_mm)
+        return effective / self.native_px_per_mm
+
+    @property
+    def effective_analysis_px_per_mm(self) -> float:
+        return min(self.analysis_px_per_mm, self.native_px_per_mm)
 
     @property
     def a4_width(self) -> int:

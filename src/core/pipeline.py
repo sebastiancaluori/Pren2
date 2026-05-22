@@ -68,6 +68,7 @@ class PuzzlePipeline:
         """(Re-)initialisiert alle auflösungsabhängigen Komponenten."""
         self.resolution = self.config.resolution
         self.tuning = self.config.tuning.scaled(self.resolution.solver_px_per_mm)
+        self.analysis_tuning = self.config.tuning.scaled(self.resolution.effective_analysis_px_per_mm)
 
         # weight = score_threshold / target_area_px
         # → perfect coverage always scores exactly score_threshold, at any resolution
@@ -254,7 +255,7 @@ class PuzzlePipeline:
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
 
-        # Coarse copy for solver (fast)
+        # Coarse copy for solver render+score loop (fast, many iterations)
         piece_ids, piece_shapes = generator.load_pieces_for_solver(
             scale=self.resolution.solver_scale
         )
@@ -264,9 +265,12 @@ class PuzzlePipeline:
             scale=self.resolution.finetune_scale
         )
 
-        # Analysis uses coarse shapes (classification does not need full res)
+        # Analysis at higher resolution for cleaner corner/edge detection (runs once)
+        _, piece_shapes_analysis = generator.load_pieces_for_solver(
+            scale=self.resolution.analysis_scale
+        )
         PieceAnalyzer.analyze_all_pieces(
-            puzzle_pieces, piece_shapes, tuning=self.tuning
+            puzzle_pieces, piece_shapes_analysis, tuning=self.analysis_tuning
         )
 
         # Print analysis results
@@ -293,10 +297,10 @@ class PuzzlePipeline:
 
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
-            if piece_id in piece_shapes:
+            if piece_id in piece_shapes_analysis:
                 self.logger.info(f"\n{piece.summary()}")
                 if save_debug:
-                    vis = PieceAnalyzer.visualize_corners(piece_shapes[piece_id], piece)
+                    vis = PieceAnalyzer.visualize_corners(piece_shapes_analysis[piece_id], piece)
                     cv2.imwrite(str(debug_dir / f"piece_{piece_id}_analysis.png"), vis)
 
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
@@ -342,12 +346,15 @@ class PuzzlePipeline:
         _, piece_shapes_fine = loader.load_pieces_for_solver(
             scale=self.resolution.finetune_scale
         )
+        _, piece_shapes_analysis = loader.load_pieces_for_solver(
+            scale=self.resolution.analysis_scale
+        )
 
         self.logger.info(f"  → {len(piece_ids)} Kamera-Teile geladen")
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
 
-        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
+        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes_analysis, tuning=self.analysis_tuning)
 
         self.logger.info("\n" + "=" * 80)
         self.logger.info("PIECE ANALYSIS RESULTS")
@@ -372,8 +379,8 @@ class PuzzlePipeline:
         for piece in puzzle_pieces:
             pid = int(piece.id)
             self.logger.info(f"\n{piece.summary()}")
-            if save_debug and pid in piece_shapes:
-                vis = PieceAnalyzer.visualize_corners(piece_shapes[pid], piece)
+            if save_debug and pid in piece_shapes_analysis:
+                vis = PieceAnalyzer.visualize_corners(piece_shapes_analysis[pid], piece)
                 cv2.imwrite(str(debug_dir / f"piece_{pid}_analysis.png"), vis)
 
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
