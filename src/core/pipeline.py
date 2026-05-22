@@ -317,7 +317,6 @@ class PuzzlePipeline:
 
         # Auflösung aus JSON übernehmen und alle abhängigen Komponenten neu initialisieren
         self.config.resolution.native_px_per_mm = loader.px_per_mm
-        self.config.resolution.solver_px_per_mm = loader.px_per_mm  # keine Downscaling
         # Quellbereich (A5 in code = physisches A4-Blatt) kommt aus dem Kamera-JSON
         self.config.resolution.a5_width_mm = loader.a4_width_mm
         self.config.resolution.a5_height_mm = loader.a4_height_mm
@@ -744,7 +743,6 @@ class PuzzlePipeline:
             port=self.config.hardware.serial_port,
             baudrate=self.config.hardware.baud_rate,
             pick_px_per_mm=self.config.resolution.solver_px_per_mm,
-            place_px_per_mm=self.config.resolution.solver_px_per_mm,
             timeout=5.0,
         )
 

@@ -62,6 +62,29 @@ def main():
             logger.info(f"Zeit: {result.duration:.2f}s")
         else:
             logger.error("✗ Puzzle konnte nicht gelöst werden")
+
+        # Print raw hardware payload (what would be sent to the robot)
+        puzzle_pieces = (result.solution or {}).get("puzzle_pieces", [])
+        px_per_mm = config.resolution.solver_px_per_mm
+        if puzzle_pieces:
+            print("\n" + "=" * 60)
+            print("HARDWARE PAYLOAD (raw values as sent to robot)")
+            print("=" * 60)
+            print(f"{'Piece':<8} {'pick_x_mm':>12} {'pick_y_mm':>12} {'place_x_mm':>12} {'place_y_mm':>12} {'rotation_deg':>14}")
+            print("-" * 60)
+            for p in puzzle_pieces:
+                pick_x = p.pick_pose.x / px_per_mm
+                pick_y = p.pick_pose.y / px_per_mm
+                if p.place_pose:
+                    place_x = p.place_pose.x
+                    place_y = p.place_pose.y
+                    rotation = p.place_pose.theta % 360
+                    if rotation > 180:
+                        rotation -= 360
+                else:
+                    place_x = place_y = rotation = 0.0
+                print(f"{p.id:<8} {pick_x:>12.2f} {pick_y:>12.2f} {place_x:>12.2f} {place_y:>12.2f} {rotation:>14.1f}")
+            print("=" * 60)
             
     except KeyboardInterrupt:
         logger.info("\nProgramm durch Benutzer abgebrochen")

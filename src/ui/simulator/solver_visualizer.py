@@ -376,12 +376,13 @@ class SolverVisualizer(BoxLayout):
         # Render original positions in source area
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
-            x = int(piece.pick_pose.x) + source_offset_x
-            y = int(piece.pick_pose.y) + source_offset_y
 
             if piece_id in self.solver_data["piece_shapes"]:
                 shape = self.solver_data["piece_shapes"][piece_id]
                 rotated = self._rotate_shape(shape, piece.pick_pose.theta)
+                # pick_pose is the centroid; offset by half shape size to get top-left
+                x = int(piece.pick_pose.x) - rotated.shape[1] // 2 + source_offset_x
+                y = int(piece.pick_pose.y) - rotated.shape[0] // 2 + source_offset_y
                 color = piece_colors[piece_id % len(piece_colors)]
                 faded_color = tuple(int(c * 0.7) for c in color)
 
