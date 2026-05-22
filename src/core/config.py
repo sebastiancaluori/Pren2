@@ -47,15 +47,15 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 2.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
+    solver_px_per_mm: float = 1.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
     finetune_max_px_per_mm: float = 10.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
-    finetune_max_scale: float = 0.6  # Obergrenze fuer Fine-Tuning (relativ zu native)
+    finetune_max_scale: float = 0.5  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
     # a5 = Quellbereich (physisches A4-Blatt, Kamera: 297x210 Querformat)
-    a4_width_mm: int = 134  # Ziel (A5-Blatt, Querformat: Breite)
-    a4_height_mm: int = 191  # Ziel (A5-Blatt: Höhe)
+    a4_width_mm: int = 128  # Ziel (A5-Blatt, Querformat: Breite)
+    a4_height_mm: int = 188  # Ziel (A5-Blatt: Höhe)
     a5_width_mm: int = 297  # Quelle (A4-Blatt, Querformat: Breite)
     a5_height_mm: int = 210  # Quelle (A4-Blatt: Höhe)
 
