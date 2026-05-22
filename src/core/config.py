@@ -47,7 +47,7 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 1.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
+    solver_px_per_mm: float = 2.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
     finetune_max_px_per_mm: float = 10.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
     finetune_max_scale: float = 0.5  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
