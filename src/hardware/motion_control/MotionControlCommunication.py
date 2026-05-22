@@ -65,7 +65,10 @@ def send_to_robot(
         if p.place_pose:
             piece.place_x = p.place_pose.x / place_px_per_mm
             piece.place_y = p.place_pose.y / place_px_per_mm
-            piece.rotation = p.place_pose.theta
+            rotation = p.place_pose.theta % 360
+            if rotation > 180:
+                rotation -= 360
+            piece.rotation = rotation
         else:
             piece.place_x = 0.0
             piece.place_y = 0.0
