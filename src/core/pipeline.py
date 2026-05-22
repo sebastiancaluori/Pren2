@@ -67,12 +67,20 @@ class PuzzlePipeline:
     def _init_resolution_components(self):
         """(Re-)initialisiert alle auflösungsabhängigen Komponenten."""
         self.resolution = self.config.resolution
-        self.tuning = self.config.tuning.scaled(self.resolution.solver_scale)
+        self.tuning = self.config.tuning.scaled(self.resolution.solver_px_per_mm)
+
+        # weight = score_threshold / target_area_px
+        # → perfect coverage always scores exactly score_threshold, at any resolution
+        target_area_px = max(1, self.resolution.a4_width * self.resolution.a4_height)
+        fine_area_px = max(1, self.resolution.fine_a4_width * self.resolution.fine_a4_height)
+        self._score_weight = self.config.tuning.score_threshold / target_area_px
+        self._finetune_weight = self.config.tuning.score_threshold / fine_area_px
+
         self.scorer = PlacementScorer(
             overlap_penalty=self.tuning.overlap_penalty,
             coverage_reward=self.tuning.coverage_reward,
             gap_penalty=self.tuning.gap_penalty,
-            weight_multiplier=self.resolution.score_weight_multiplier,
+            weight_multiplier=self._score_weight,
         )
 
     def run(self) -> PipelineResult:
@@ -309,6 +317,7 @@ class PuzzlePipeline:
 
         # Auflösung aus JSON übernehmen und alle abhängigen Komponenten neu initialisieren
         self.config.resolution.native_px_per_mm = loader.px_per_mm
+        self.config.resolution.solver_px_per_mm = loader.px_per_mm  # keine Downscaling
         # Quellbereich (A5 in code = physisches A4-Blatt) kommt aus dem Kamera-JSON
         self.config.resolution.a5_width_mm = loader.a4_width_mm
         self.config.resolution.a5_height_mm = loader.a4_height_mm
@@ -442,7 +451,8 @@ class PuzzlePipeline:
 
         self.logger.info(f"  → Collected {len(all_guesses)} guesses for visualization")
 
-        best_score = solution.score
+        # Normalise to weight=1.0 so the visualizer (which uses no weight_multiplier) can match it
+        best_score = solution.score / self._score_weight
         best_guess = coarse_fine_placements
         best_guess_index = len(all_guesses) - 1 if all_guesses else 0
 
@@ -479,7 +489,7 @@ class PuzzlePipeline:
                 place_y_mm = com[1] / self.resolution.finetune_px_per_mm
                 piece.place_pose = Pose(x=place_x_mm, y=place_y_mm, theta=theta)
                 piece.confidence = (
-                    1.0 if solution.score > self.tuning.score_threshold else 0.5
+                    1.0 if best_score > self.tuning.score_threshold else 0.5
                 )
                 self.logger.debug(
                     f"    Piece {piece_id}: bbox=({px:.1f},{py:.1f}) "
@@ -673,7 +683,7 @@ class PuzzlePipeline:
             overlap_penalty=self.config.tuning.overlap_penalty,
             coverage_reward=self.config.tuning.coverage_reward,
             gap_penalty=self.config.tuning.gap_penalty,
-            weight_multiplier=self.resolution.finetune_weight_multiplier,
+            weight_multiplier=self._finetune_weight,
         )
 
         raw = self.config.tuning  # unscaled defaults

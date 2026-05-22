@@ -105,7 +105,9 @@ class CameraLoader:
             if scale != 1.0:
                 new_h = max(1, int(round(mask.shape[0] * scale)))
                 new_w = max(1, int(round(mask.shape[1] * scale)))
-                mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+                interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+                mask = cv2.resize(mask.astype(np.float32), (new_w, new_h), interpolation=interp)
+                mask = (mask > 0.5).astype(np.uint8)
 
             piece_shapes[idx] = mask
             piece_ids.append(idx)

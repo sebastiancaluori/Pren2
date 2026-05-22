@@ -101,47 +101,22 @@ class IterativeSolver:
         self.all_guesses = []
         self.all_scores = []
 
-        # Find corner pieces - USE PIECE_TYPE CLASSIFICATION
-        corner_pieces = [
+        # Find corner pieces — piece_analyzer re-evaluation has already corrected classifications
+        corner_candidates = [
             piece for piece in puzzle_pieces if piece.piece_type == "corner"
         ]
 
-        if not corner_pieces:
-            print("  ⚠️  No corner pieces found (piece_type == 'corner')!")
-            # Fallback to has_corner if piece_type not set
-            corner_pieces = [
-                piece
-                for piece in puzzle_pieces
-                if piece.has_corner and len(piece.corners) > 0
-            ]
-            if not corner_pieces:
-                return self._empty_solution()
-            print(
-                f"  ⚠️  Using fallback: found {len(corner_pieces)} pieces with corner features"
-            )
+        if not corner_candidates:
+            print("  ⚠️  No corner pieces found!")
+            return self._empty_solution()
 
-        print(f"\n  Found {len(corner_pieces)} corner pieces (by piece_type):")
-        for piece in corner_pieces:
-            print(
-                f"    Piece {piece.id}: type={piece.piece_type}, {len(piece.corners)} corners"
-            )
-
-        # Validate corner piece count
-        if len(corner_pieces) != 4:
-            print(
-                f"\n  ⚠️  WARNING: Expected 4 corner pieces, found {len(corner_pieces)}!"
-            )
-            if len(corner_pieces) < 4:
-                print(
-                    f"      Not enough corner pieces - puzzle may not solve correctly"
-                )
-            else:
-                print(f"      Too many corner pieces - will only use first 4")
-                corner_pieces = corner_pieces[:4]
+        print(f"\n  Found {len(corner_candidates)} corner pieces:")
+        for piece in corner_candidates:
+            print(f"    Piece {piece.id}: {len(piece.corners)} corners")
 
         # Generate combinations:
         # Step 1: Permutations of pieces (which piece in which corner)
-        piece_permutations = list(itertools.permutations(corner_pieces))
+        piece_permutations = list(itertools.permutations(corner_candidates))
 
         print(
             f"\n  Piece permutations: {len(piece_permutations)} (which piece → which corner)"
@@ -182,7 +157,7 @@ class IterativeSolver:
 
         print(f"\n  📋 Piece Distribution:")
         print(
-            f"     Corners (→ placed in 4 corners): {[int(p.id) for p in corner_pieces]}"
+            f"     Corners (→ placed in 4 corners): {[int(p.id) for p in corner_candidates]}"
         )
         print(
             f"     Edges (→ placed along sides):   {[int(p.id) for p in all_edge_pieces]}"
@@ -192,7 +167,7 @@ class IterativeSolver:
         )
 
         return self._solve_with_mode_switching(
-            corner_pieces,
+            corner_candidates,
             all_corner_combinations,
             piece_shapes,
             target,

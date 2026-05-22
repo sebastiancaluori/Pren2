@@ -494,6 +494,17 @@ class SolverVisualizer(BoxLayout):
 
     def _update_image(self, array: np.ndarray):
         """Update the image widget with a numpy array."""
+        max_w, max_h = 1400, 700
+        h, w = array.shape[:2]
+        scale = min(max_w / w, max_h / h, 4.0)
+        if scale != 1.0:
+            interp = cv2.INTER_NEAREST if scale > 1.0 else cv2.INTER_AREA
+            array = cv2.resize(
+                array,
+                (max(1, int(w * scale)), max(1, int(h * scale))),
+                interpolation=interp,
+            )
+
         # Flip vertically (Kivy uses bottom-left origin)
         display = np.flipud(array)
 

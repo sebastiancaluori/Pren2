@@ -47,8 +47,8 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 1.0  # Solver-Zielaufloesung
-    finetune_max_px_per_mm: float = 2.0  # Obergrenze fuer Fine-Tuning
+    solver_px_per_mm: float = 2.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
+    finetune_max_px_per_mm: float = 10.0  # Obergrenze fuer Fine-Tuning
 
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
@@ -86,8 +86,8 @@ class ResolutionConfig:
 
     @property
     def score_weight_multiplier(self) -> float:
-        # 1/scale^2 kompensiert Downsampling, damit score_threshold auflösungsunabhängig bleibt
-        return 1.0 / (self.solver_scale**2)
+        # Nur noch als Fallback — Pipeline berechnet Gewicht dynamisch aus Zielflaeche
+        return self.solver_px_per_mm ** 2
 
     # --- Fine-Tuning-Aufloesung ---
 
@@ -111,7 +111,7 @@ class ResolutionConfig:
 
     @property
     def finetune_weight_multiplier(self) -> float:
-        return 1.0 / (self.finetune_scale**2)
+        return self.finetune_px_per_mm**2
 
     @property
     def finetune_ratio(self) -> float:
@@ -127,22 +127,23 @@ class SolverTuning:
     overlap_penalty: float = 2.0
     coverage_reward: float = 1.0
     gap_penalty: float = 0.5
-    score_threshold: float = 210000.0
+    score_threshold: float = 240000.0
 
     # --- Corner Detection (corner_detector.py) ---
+    # Alle Pixel-Werte in solver-px (= mm bei solver_px_per_mm=1.0)
     corner_angle_tolerance: int = 6  # Grad Abweichung von 90°
-    corner_min_straightness: float = 0.9
-    corner_min_edge_length: int = 25  # Pixel
-    corner_min_quality: float = 0.65
-    corner_max_overhang: int = 20  # Pixel
-    corner_min_extent: int = 60  # Pixel
-    corner_contour_epsilon: float = 0.01  # Anteil des Umfangs
+    corner_min_straightness: float = 0.90
+    corner_min_edge_length: int = 20  # mm
+    corner_min_quality: float = 0.68
+    corner_max_overhang: int = 10  # mm
+    corner_min_extent: int = 35  # mm
+    corner_contour_epsilon: float = 0.030  # Anteil des Umfangs
 
     # --- Edge Detection (edge_detector.py) ---
-    edge_min_length: int = 10  # Pixel
-    edge_min_straightness: float = 0.8
-    edge_min_score: float = 0.35
-    edge_contour_epsilon: float = 0.008  # Anteil des Umfangs
+    edge_min_length: int = 10  # mm
+    edge_min_straightness: float = 0.93
+    edge_min_score: float = 0.45
+    edge_contour_epsilon: float = 0.012  # Anteil des Umfangs
 
     # --- Piece Classification (piece_analyzer.py) ---
     classify_corner_threshold: float = 0.85
@@ -152,10 +153,10 @@ class SolverTuning:
     fitter_coarse_step: int = 5  # Grad
     fitter_fine_step: float = 0.5  # Grad
     fitter_fine_range: float = 10.0  # ±Grad um besten Winkel
-    fitter_outside_limit: int = 100  # Pixel bevor Strafe
+    fitter_outside_limit: int = 50  # mm
     fitter_edge_touch_bonus: int = 50000
     fitter_outside_penalty: int = 100
-    fitter_edge_touch_distance: int = 10  # Pixel
+    fitter_edge_touch_distance: int = 5  # mm
 
     # --- Iterative Solver (iterative_solver.py) ---
     initial_corner_count: int = 60
@@ -164,7 +165,7 @@ class SolverTuning:
 
     # --- Edge Placement (edge_placement.py) ---
     slide_positions: int = 20  # Gitterpositionen pro Achse
-    center_piece_margin: int = 50  # Pixel vom Rand
+    center_piece_margin: int = 25  # mm
 
     # --- Fine-Tuning (fine_tuner.py) ---
     finetune_xy_range: int = 4  # Pixel bei finetune_scale=1.0 (±2mm)
