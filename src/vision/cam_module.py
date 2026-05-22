@@ -13,7 +13,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
+#20879 mm2 fläche des testpuzzles
 try:
     from picamera2 import Picamera2
 except (ImportError, ModuleNotFoundError):
@@ -262,7 +262,8 @@ CUTOUT_BACKGROUND_VALUE = 255
 
 # PREN-Puzzle ohne Rahmen: 18.9 x 12.6 cm
 # Erwartete Gesamtfläche aller Puzzleteile in mm2.
-EXPECTED_TOTAL_PART_AREA_MM2 = 189 * 126
+# 20879 Fläche des Testpuzzles von Silvan
+EXPECTED_TOTAL_PART_AREA_MM2 = 20879
 # Erlaubte Flächenabweichung. 0.01 = ±1 %.
 MAX_TOTAL_AREA_ERROR_RATIO = 0.01
 
