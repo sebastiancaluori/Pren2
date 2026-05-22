@@ -130,108 +130,59 @@ def find_best_edge_placement(
 ) -> Optional[dict]:
     """
     Smart edge placement:
-    1. Try each side (right, left, top, bottom) with all 4 rotations
-    2. If side doesn't improve score -> abort that side immediately
-    3. If side improves -> slide along axis to find best position
+    Each rotation has exactly one correct side (derived from primary_edge_rotation).
+    Slide immediately for each rotation on its correct side — no center-position gate
+    that can falsely reject a good rotation.
     """
 
     piece_id = int(edge_piece.id)
     height, width = target.shape
 
-    # Define sides to try - try all 4 rotations per side
-    sides = [
-        "right",
-        "left",
-        "top",
-        "bottom",
-    ]
+    primary = edge_piece.primary_edge_rotation if edge_piece.primary_edge_rotation is not None else 0
 
-    rotations = set()
-    # 2) Add primary rotation if this piece belongs on this side
-    if edge_piece.primary_edge_rotation is not None:
-        rotations.add(edge_piece.primary_edge_rotation)
-        rotations.add((edge_piece.primary_edge_rotation + 90) % 360)
-        rotations.add((edge_piece.primary_edge_rotation + 180) % 360)
-        rotations.add((edge_piece.primary_edge_rotation + 270) % 360)
-    # 3) Fallback safety net
-    if not rotations:
-        rotations = {0, 90, 180, 270}
-    rotations = list(rotations)
+    # primary_edge_rotation aligns flat edge to bottom → correct side is "bottom".
+    # Each +90° turn rotates the flat edge to the next side.
+    rotation_side_pairs = [
+        (primary % 360,          "bottom"),
+        ((primary + 90) % 360,   "right"),
+        ((primary + 180) % 360,  "top"),
+        ((primary + 270) % 360,  "left"),
+    ]
 
     best_placement = None
     best_score = current_score
 
-    for side_name in sides:
-        print(f"        Trying {side_name} side...")
+    for rotation, side_name in rotation_side_pairs:
+        rotated_mask = rotate_and_crop(piece_shapes[piece_id], rotation)
+        piece_h, piece_w = rotated_mask.shape
 
-        side_best_score = current_score
-        side_best_placement = None
+        if side_name == "right":
+            init_x, init_y, axis_type = float(width - piece_w), float((height - piece_h) / 2), "vertical"
+        elif side_name == "left":
+            init_x, init_y, axis_type = 0.0, float((height - piece_h) / 2), "vertical"
+        elif side_name == "bottom":
+            init_x, init_y, axis_type = float((width - piece_w) / 2), float(height - piece_h), "horizontal"
+        else:  # top
+            init_x, init_y, axis_type = float((width - piece_w) / 2), 0.0, "horizontal"
 
-        # Try all rotations for this side
-        for rotation in rotations:
-            rotated_mask = rotate_and_crop(piece_shapes[piece_id], rotation)
-            piece_h, piece_w = rotated_mask.shape
+        initial_placement = {
+            "piece_id": piece_id,
+            "x": init_x,
+            "y": init_y,
+            "theta": rotation,
+            "side": side_name,
+            "axis_type": axis_type,
+        }
 
-            # Initial test position for this side
-            if side_name == "right":
-                test_x = width - piece_w
-                test_y = (height - piece_h) / 2
-                axis_type = "vertical"
-            elif side_name == "left":
-                test_x = 0
-                test_y = (height - piece_h) / 2
-                axis_type = "vertical"
-            elif side_name == "bottom":
-                test_x = (width - piece_w) / 2
-                test_y = height - piece_h
-                axis_type = "horizontal"
-            else:  # top
-                test_x = (width - piece_w) / 2
-                test_y = 0
-                axis_type = "horizontal"
-
-            # Test initial position
-            test_placement = {
-                "piece_id": piece_id,
-                "x": test_x,
-                "y": test_y,
-                "theta": rotation,
-                "side": side_name,
-            }
-
-            test_placements = current_placements + [test_placement]
-
-            # ADD TEST TO VISUALIZER
-            all_guesses.append(test_placements.copy())
-
-            rendered = renderer.render(test_placements, piece_shapes)
-            test_score = scorer.score(rendered, target)
-            all_scores.append(test_score)
-
-            if test_score > side_best_score:
-                side_best_score = test_score
-                side_best_placement = test_placement.copy()
-                side_best_placement["axis_type"] = axis_type
-
-        print(
-            f"          Best rotation: θ={side_best_placement['theta'] if side_best_placement else 'N/A'}°, score={side_best_score:.1f}"
-        )
-
-        # If no improvement on this side, skip sliding
-        if side_best_score <= current_score:
-            print(f"          → No improvement, skip {side_name}")
-            continue
-
-        # This side improved! Slide along axis to optimize
-        print(f"          → {side_name} improved! Sliding to optimize...")
+        print(f"        Trying θ={rotation}° → {side_name} side (sliding {slide_positions} positions)...")
 
         optimized = slide_along_axis(
             piece_id=piece_id,
             piece_shapes=piece_shapes,
             current_placements=current_placements,
             target=target,
-            initial_placement=side_best_placement,
-            axis_type=side_best_placement["axis_type"],
+            initial_placement=initial_placement,
+            axis_type=axis_type,
             side_name=side_name,
             renderer=renderer,
             scorer=scorer,
@@ -240,10 +191,12 @@ def find_best_edge_placement(
             num_positions=slide_positions,
         )
 
+        print(f"          → score={optimized['score']:.1f} (best so far: {best_score:.1f})")
+
         if optimized["score"] > best_score:
             best_score = optimized["score"]
             best_placement = optimized["placement"]
-            print(f"          → Optimized score: {best_score:.1f}")
+            print(f"          ✓ New best: θ={rotation}° on {side_name}")
 
     return best_placement
 
