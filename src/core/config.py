@@ -192,12 +192,12 @@ class SolverTuning:
     gap_dilation_mm: float = (
         3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
-    pull_to_center_mm: float = 1  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
+    pull_to_center_mm: float = 1.2  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
     skip_wall_align: bool = False  # Wandausrichtung nach dem Solver überspringen
     wall_align_slide_positions: int = (
-        30  # Rasterpositionen beim Entlanggleiten an der Wand
+        100  # Rasterpositionen beim Entlanggleiten an der Wand
     )
 
     # --- Fine-Tuning (fine_tuner.py) ---
