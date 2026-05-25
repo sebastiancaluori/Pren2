@@ -128,7 +128,10 @@ A4_WIDTH_MM = 297.0
 # Höhe der A4-Fläche im Querformat in mm.
 A4_HEIGHT_MM = 210.0
 # Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
-PX_PER_MM = 7.0
+# Interne Auflösung mit der das Cam Modul arbeitet, so hoch wie möglich bzw sinnvoll
+WORKING_INTERNAL_PX_PER_MM = 7.0
+# Auflösung der Bilder die der Algorithmus erhält, so tief wie nötig
+ALGO_INPUT_PX_PER_MM = 3.0
 
 
 # Diese Punkte sind die gemessenen Referenzpunkte im Bild.
@@ -655,8 +658,8 @@ def extractA4Corners(detectedMarkers):
 # ============================================================
 
 def getWarpSizePx():
-    warpWidthPx = int(round(A4_WIDTH_MM * PX_PER_MM))
-    warpHeightPx = int(round(A4_HEIGHT_MM * PX_PER_MM))
+    warpWidthPx = int(round(A4_WIDTH_MM * WORKING_INTERNAL_PX_PER_MM))
+    warpHeightPx = int(round(A4_HEIGHT_MM * WORKING_INTERNAL_PX_PER_MM))
     return warpWidthPx, warpHeightPx
 
 
@@ -713,7 +716,7 @@ def warpPxToOutputPxTopRight(xPx, yPx):
 
 
 def outputPxToOutputMm(xPx, yPx):
-    return float(xPx) / PX_PER_MM, float(yPx) / PX_PER_MM
+    return float(xPx) / WORKING_INTERNAL_PX_PER_MM, float(yPx) / WORKING_INTERNAL_PX_PER_MM
 
 
 def buildCoordinateOriginDescription():
@@ -741,7 +744,7 @@ def applyIgnoreBorder(binaryMask):
     if IGNORE_BORDER_MM <= 0:
         return binaryMask
 
-    borderPx = int(round(IGNORE_BORDER_MM * PX_PER_MM))
+    borderPx = int(round(IGNORE_BORDER_MM * WORKING_INTERNAL_PX_PER_MM))
 
     if borderPx <= 0:
         return binaryMask
@@ -840,8 +843,8 @@ def findAllValidParts(binaryMask):
     # Konturen suchen und nur solche behalten, deren Fläche im erlaubten Bereich liegt.
     contours, _ = cv2.findContours(binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    minAreaPx = MIN_PART_AREA_MM2 * (PX_PER_MM ** 2)
-    maxAreaPx = MAX_PART_AREA_MM2 * (PX_PER_MM ** 2)
+    minAreaPx = MIN_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM ** 2)
+    maxAreaPx = MAX_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM ** 2)
 
     detectedParts = []
 
@@ -892,7 +895,7 @@ def addDerivedPartValues(detectedParts):
             partInfo["centroidY"],
         )
         centroidXmm, centroidYmm = outputPxToOutputMm(centroidXpxOutput, centroidYpxOutput)
-        areaMm2 = partInfo["areaPx"] / (PX_PER_MM ** 2)
+        areaMm2 = partInfo["areaPx"] / (WORKING_INTERNAL_PX_PER_MM ** 2)
 
         partInfo["index"] = i + 1
         partInfo["partName"] = f"part_{i + 1:02d}"
@@ -1021,9 +1024,32 @@ def savePartOutputs(warpedImageBgr, binaryMask, detectedParts):
         partInfo["cutoutPath"] = str(outputPartCutoutPath)
 
 
+def getAlgoInputScaleFactor():
+    return ALGO_INPUT_PX_PER_MM / WORKING_INTERNAL_PX_PER_MM
+
+
+def resizeMaskForAlgoInput(maskImage):
+    scaleFactor = getAlgoInputScaleFactor()
+
+    if scaleFactor == 1.0:
+        return maskImage
+
+    newWidth = max(1, int(round(maskImage.shape[1] * scaleFactor)))
+    newHeight = max(1, int(round(maskImage.shape[0] * scaleFactor)))
+
+    return cv2.resize(
+        maskImage,
+        (newWidth, newHeight),
+        interpolation=cv2.INTER_NEAREST,
+    )
+
 def saveAlgoInputFiles(binaryMask, detectedParts):
     # Speichert nur die Masken, welche der Algorithmus später als Input braucht.
+    # Intern wird mit WORKING_INTERNAL_PX_PER_MM gearbeitet.
+    # Für den Algorithmus werden die Masken auf ALGO_INPUT_PX_PER_MM runterskaliert.
     algoInputDirPath = clearAlgoInputFolder()
+
+    scaleFactor = getAlgoInputScaleFactor()
 
     for i, partInfo in enumerate(detectedParts):
         cropBounds = (
@@ -1033,15 +1059,30 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
             partInfo["bboxY"] + partInfo["bboxH"],
         )
 
-        croppedSingleMask = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
+        croppedSingleMaskInternal = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
+        croppedSingleMaskAlgo = resizeMaskForAlgoInput(croppedSingleMaskInternal)
 
         algoMaskFilename = f"{ALGO_INPUT_MASK_PREFIX}{i}.png"
         algoMaskPath = algoInputDirPath / algoMaskFilename
 
-        savePngImage(algoMaskPath, croppedSingleMask)
+        savePngImage(algoMaskPath, croppedSingleMaskAlgo)
 
         partInfo["algoInputMaskFilename"] = algoMaskFilename
         partInfo["algoInputMaskPath"] = str(algoMaskPath)
+
+        # Bounding Box bezogen auf die runterskalierte Algorithmus-Maske.
+        partInfo["algoInputBboxX"] = int(round(partInfo["bboxX"] * scaleFactor))
+        partInfo["algoInputBboxY"] = int(round(partInfo["bboxY"] * scaleFactor))
+        partInfo["algoInputBboxW"] = int(round(partInfo["bboxW"] * scaleFactor))
+        partInfo["algoInputBboxH"] = int(round(partInfo["bboxH"] * scaleFactor))
+
+        # Schwerpunkt in Pixeln passend zur Algorithmus-Skalierung.
+        # Die mm-Werte bleiben die Wahrheit; daraus werden die Algo-Pixel berechnet.
+        partInfo["algoInputCentroidXpx"] = float(partInfo["centroidXmm"] * ALGO_INPUT_PX_PER_MM)
+        partInfo["algoInputCentroidYpx"] = float(partInfo["centroidYmm"] * ALGO_INPUT_PX_PER_MM)
+
+        partInfo["algoInputMaskWidthPx"] = int(croppedSingleMaskAlgo.shape[1])
+        partInfo["algoInputMaskHeightPx"] = int(croppedSingleMaskAlgo.shape[0])
 
     return algoInputDirPath
 
@@ -1058,7 +1099,8 @@ def buildGeometryJsonData():
             "height": A4_HEIGHT_MM,
             "area_mm2": round(A4_WIDTH_MM * A4_HEIGHT_MM, 6),
         },
-        "px_per_mm": PX_PER_MM,
+        "px_per_mm": ALGO_INPUT_PX_PER_MM,
+        "working_internal_px_per_mm": WORKING_INTERNAL_PX_PER_MM,
         "coordinate_system": {
             "origin": COORDINATE_ORIGIN,
             "description": buildCoordinateOriginDescription(),
@@ -1079,6 +1121,31 @@ def buildPartsJsonList(detectedParts, includePaths):
     partsJson = []
 
     for partInfo in detectedParts:
+        if includePaths:
+            centroidPx = {
+                "x": round(partInfo["centroidXpx"], 6),
+                "y": round(partInfo["centroidYpx"], 6),
+            }
+
+            boundingBoxPx = {
+                "x": partInfo["bboxX"],
+                "y": partInfo["bboxY"],
+                "w": partInfo["bboxW"],
+                "h": partInfo["bboxH"],
+            }
+        else:
+            centroidPx = {
+                "x": round(partInfo["algoInputCentroidXpx"], 6),
+                "y": round(partInfo["algoInputCentroidYpx"], 6),
+            }
+
+            boundingBoxPx = {
+                "x": partInfo["algoInputBboxX"],
+                "y": partInfo["algoInputBboxY"],
+                "w": partInfo["algoInputBboxW"],
+                "h": partInfo["algoInputBboxH"],
+            }
+
         partData = {
             "index": partInfo["index"],
             "part_name": partInfo["partName"],
@@ -1086,17 +1153,9 @@ def buildPartsJsonList(detectedParts, includePaths):
                 "x": round(partInfo["centroidXmm"], 6),
                 "y": round(partInfo["centroidYmm"], 6),
             },
-            "centroid_px": {
-                "x": round(partInfo["centroidXpx"], 6),
-                "y": round(partInfo["centroidYpx"], 6),
-            },
+            "centroid_px": centroidPx,
             "area_mm2": round(partInfo["areaMm2"], 6),
-            "bounding_box_px": {
-                "x": partInfo["bboxX"],
-                "y": partInfo["bboxY"],
-                "w": partInfo["bboxW"],
-                "h": partInfo["bboxH"],
-            },
+            "bounding_box_px": boundingBoxPx,
             "algo_input_mask_filename": partInfo.get("algoInputMaskFilename"),
         }
 
@@ -1155,7 +1214,8 @@ def buildAlgoInputJsonData(detectedParts, areaValidationData):
             "origin": COORDINATE_ORIGIN,
             "description": buildCoordinateOriginDescription(),
         },
-        "px_per_mm": PX_PER_MM,
+        "px_per_mm": ALGO_INPUT_PX_PER_MM,
+        "working_internal_px_per_mm": WORKING_INTERNAL_PX_PER_MM,
         "a4_size_mm": {
             "width": A4_WIDTH_MM,
             "height": A4_HEIGHT_MM,
@@ -1193,8 +1253,8 @@ def drawCoordinateGridDebug(debugImageBgr):
     imageHeight, imageWidth = debugImageBgr.shape[:2]
     overlay = debugImageBgr.copy()
 
-    gridSpacingPx = int(round(DEBUG_GRID_SPACING_MM * PX_PER_MM))
-    majorSpacingPx = int(round(DEBUG_GRID_MAJOR_SPACING_MM * PX_PER_MM))
+    gridSpacingPx = int(round(DEBUG_GRID_SPACING_MM * WORKING_INTERNAL_PX_PER_MM))
+    majorSpacingPx = int(round(DEBUG_GRID_MAJOR_SPACING_MM * WORKING_INTERNAL_PX_PER_MM))
 
     if gridSpacingPx <= 0:
         return debugImageBgr
@@ -1221,7 +1281,7 @@ def drawCoordinateGridDebug(debugImageBgr):
 
     debugImageBgr = cv2.addWeighted(overlay, DEBUG_GRID_ALPHA, debugImageBgr, 1.0 - DEBUG_GRID_ALPHA, 0)
 
-    axisLengthPx = int(round(DEBUG_AXIS_LENGTH_MM * PX_PER_MM))
+    axisLengthPx = int(round(DEBUG_AXIS_LENGTH_MM * WORKING_INTERNAL_PX_PER_MM))
     axisLengthPx = max(gridSpacingPx, axisLengthPx)
 
     origin = (imageWidth - 1, 0)
@@ -1568,7 +1628,7 @@ def printHomographyInfo(hImageToWarp):
 
     print()
     print(f"Warp-Groesse: {warpWidthPx} x {warpHeightPx} px")
-    print(f"PX_PER_MM: {PX_PER_MM}")
+    print(f"PX_PER_MM: {WORKING_INTERNAL_PX_PER_MM}")
 
 
 def printPartsInfo(detectedParts):
