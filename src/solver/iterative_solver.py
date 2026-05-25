@@ -80,7 +80,8 @@ class IterativeSolver:
         piece_shapes: Dict[int, np.ndarray],
         target: np.ndarray,
         puzzle_pieces: list,
-        score_threshold: float,
+        score_max: float,
+        score_accept: float | None = None,
         initial_corner_count: int = 60,
         max_corners_to_refine: int = 20,
         refinement_patience: int = 5,
@@ -140,13 +141,16 @@ class IterativeSolver:
         # and guarantees the best layout makes it into Phase 2 regardless of classifier quality.
         phase1_count = len(all_corner_combinations)
 
+        early_exit_score = score_accept if score_accept is not None else score_max
+
         solution = self._solve_with_mode_switching(
             corner_candidates,
             all_corner_combinations,
             piece_shapes,
             target,
             puzzle_pieces,
-            score_threshold,
+            score_max,
+            early_exit_score,
             phase1_count,
             max_corners_to_refine,
             refinement_patience,
@@ -188,7 +192,8 @@ class IterativeSolver:
         piece_shapes,
         target,
         puzzle_pieces,
-        score_threshold,
+        score_max,
+        score_accept,
         initial_corner_count,
         max_corners_to_refine,
         refinement_patience,
@@ -196,8 +201,8 @@ class IterativeSolver:
     ) -> IterativeSolution:
         """
         Phase 1: score all corner layouts (corner-only, cheap).
-        Phase 2: try edge placement on layouts in batches of max_corners_to_refine,
-                 best corner score first. Exit as soon as any layout exceeds threshold.
+        Phase 2: try edge placement in batches. Exit early when score_accept is reached;
+                 success is determined by score_max.
         """
 
         total = len(all_corner_combinations)
@@ -222,7 +227,7 @@ class IterativeSolver:
         # PHASE 2: full edge placement in batches, exit at threshold
         # ====================================================================
         batch_size = max_corners_to_refine
-        print(f"  Phase 2: edge placement in batches of {batch_size} (threshold {score_threshold})...")
+        print(f"  Phase 2: edge placement in batches of {batch_size} (accept={score_accept}, max={score_max})...")
 
         edge_kwargs = {}
         if self.tuning:
@@ -271,8 +276,8 @@ class IterativeSolver:
                 else:
                     print(f"    Layout {layouts_tried}: pieces {[int(p.id) for p in piece_perm]} score {final_score:.0f} [{layout_guesses} guesses]")
 
-                if final_score >= score_threshold:
-                    print(f"  THRESHOLD REACHED: {final_score:.0f} >= {score_threshold} (layout {layouts_tried}, {len(self.all_guesses)} total guesses)")
+                if final_score >= score_accept:
+                    print(f"  ACCEPTED: {final_score:.0f} >= {score_accept} (layout {layouts_tried}, {len(self.all_guesses)} total guesses)")
                     self._update_piece_poses(puzzle_pieces, final_placements)
                     return IterativeSolution(
                         success=True,
@@ -287,7 +292,7 @@ class IterativeSolver:
         print(f"  Best: {best_overall_score:.0f} after {layouts_tried} layouts | guesses: {len(self.all_guesses)}")
         self._update_piece_poses(puzzle_pieces, best_overall_solution)
         return IterativeSolution(
-            success=best_overall_score >= score_threshold,
+            success=best_overall_score >= score_max,
             anchor_fit=None,
             remaining_placements=best_overall_solution,
             score=best_overall_score,

@@ -72,12 +72,12 @@ class PuzzlePipeline:
         self.tuning = self.config.tuning.scaled(self.resolution.solver_px_per_mm)
         self.analysis_tuning = self.config.tuning.scaled(self.resolution.effective_analysis_px_per_mm)
 
-        # weight = score_threshold / target_area_px
-        # → perfect coverage always scores exactly score_threshold, at any resolution
+        # weight = score_max / target_area_px
+        # → perfect coverage always scores exactly score_max, at any resolution
         target_area_px = max(1, self.resolution.a4_width * self.resolution.a4_height)
         fine_area_px = max(1, self.resolution.fine_a4_width * self.resolution.fine_a4_height)
-        self._score_weight = self.config.tuning.score_threshold / target_area_px
-        self._finetune_weight = self.config.tuning.score_threshold / fine_area_px
+        self._score_weight = self.config.tuning.score_max / target_area_px
+        self._finetune_weight = self.config.tuning.score_max / fine_area_px
 
         self.scorer = PlacementScorer(
             overlap_penalty=self.tuning.overlap_penalty,
@@ -445,7 +445,8 @@ class PuzzlePipeline:
             piece_shapes=piece_shapes,
             target=target,
             puzzle_pieces=puzzle_pieces,
-            score_threshold=self.tuning.score_threshold * self._score_weight,
+            score_max=self.config.tuning.score_max,
+            score_accept=self.config.tuning.score_accept,
             initial_corner_count=self.tuning.initial_corner_count,
             max_corners_to_refine=self.tuning.max_corners_to_refine,
             max_iterations=self.tuning.max_iterations,
@@ -552,7 +553,7 @@ class PuzzlePipeline:
                 place_y_mm = com[1] / self.resolution.finetune_px_per_mm
                 piece.place_pose = Pose(x=place_x_mm, y=place_y_mm, theta=theta)
                 piece.confidence = (
-                    1.0 if best_score > self.tuning.score_threshold else 0.5
+                    1.0 if best_score > self.tuning.score_max else 0.5
                 )
                 self.logger.debug(
                     f"    Piece {piece_id}: bbox=({px:.1f},{py:.1f}) "

@@ -47,7 +47,7 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 0.4  # Solver-Aufloesung (Render+Score-Schleife)
+    solver_px_per_mm: float = 0.3  # Solver-Aufloesung (Render+Score-Schleife)
     analysis_px_per_mm: float = (
         4.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
     )
@@ -142,7 +142,10 @@ class SolverTuning:
     overlap_penalty: float = 2.0
     coverage_reward: float = 1.0
     gap_penalty: float = 0.2
-    score_threshold: float = 3100.0
+    score_max: float = 100_000.0  # Referenz-/Maximalscore (Normalisierung + Erfolg)
+    score_accept: float = (
+        81_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
+    )
 
     # --- Corner Detection (corner_detector.py) ---
     # Alle Pixel-Werte in solver-px (= mm bei solver_px_per_mm=1.0)
@@ -180,7 +183,7 @@ class SolverTuning:
 
     # --- Edge Placement (edge_placement.py) ---
     slide_positions: int = (
-        8  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
+        7  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
     )
     slide_patience: int = (
         3  # Aufeinanderfolgende Positionen ohne Verbesserung → Abbruch
@@ -189,7 +192,7 @@ class SolverTuning:
     gap_dilation_mm: float = (
         3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
-    pull_to_center_mm: float = 0.0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
+    pull_to_center_mm: float = 1.2  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
     skip_wall_align: bool = False  # Wandausrichtung nach dem Solver überspringen
