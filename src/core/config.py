@@ -47,7 +47,7 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 0.5 # Solver-Aufloesung (Render+Score-Schleife)
+    solver_px_per_mm: float = 0.4 # Solver-Aufloesung (Render+Score-Schleife)
     analysis_px_per_mm: float = (
         5.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
     )
@@ -187,7 +187,7 @@ class SolverTuning:
     )
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
-        3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
+        1.0 # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
 
     # --- Fine-Tuning (fine_tuner.py) ---
