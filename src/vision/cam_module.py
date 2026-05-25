@@ -31,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]  # src/vision/cam_module.py -
 DESTINATION_TO_ALGO_INPUT_FOLDER = PROJECT_ROOT / "input"
 
 # Eingabebild, falls IMAGE_SOURCE = "file" oder keine Pi Camera vorhanden ist.
-INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
+INPUT_IMAGE_PATH = PROJECT_ROOT / "src" / "vision" / "1.png"
 
 # Name der JSON-Datei, welche der Solver später einliest.
 ALGO_INPUT_JSON_FILENAME = "parts.json"
@@ -109,22 +109,9 @@ OUTPUT_JSON_FILENAME = f"{RUN_NAME}_parts.json"
 # Speichert die Homographie-Matrix Bild -> entzerrtes A4 als NumPy-Datei.
 OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
-# True = Debug-Fenster anzeigen. Auf dem Raspi/headless normalerweise False lassen.
-DEBUG_SHOW_IMAGES = False
-# Anzeigedauer der Debug-Fenster in Millisekunden.
-DEBUG_WAIT_MS = 1000
-
-# Fenstername für das Rohbild, falls DEBUG_SHOW_IMAGES = True.
-INPUT_WINDOW_NAME = "Input Image"
-# Fenstername für das A4-/ArUco-Debug-Bild.
-DEBUG_WINDOW_NAME = "A4 Corner Debug Image"
-# Fenstername für das entzerrte A4-Bild.
-WARP_WINDOW_NAME = "Warped A4 Image"
-# Fenstername für die Teile-Maske.
-MASK_WINDOW_NAME = "Parts Mask"
-# Fenstername für das finale Teile-Debug-Bild.
-PARTS_DEBUG_WINDOW_NAME = "Parts Debug"
-
+# False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
+# True = Zusätzlich Debug-Dateien in src/vision/output speichern.
+SAVE_DEBUG_FILES = True
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -141,7 +128,7 @@ A4_WIDTH_MM = 297.0
 # Höhe der A4-Fläche im Querformat in mm.
 A4_HEIGHT_MM = 210.0
 # Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
-PX_PER_MM = 10.0
+PX_PER_MM = 7.0
 
 
 # Diese Punkte sind die gemessenen Referenzpunkte im Bild.
@@ -261,7 +248,7 @@ CUTOUT_BACKGROUND_VALUE = 255
 
 # PREN-Puzzle ohne Rahmen: 18.9 x 12.6 cm
 # Erwartete Gesamtfläche aller Puzzleteile in mm2.
-# 20879 Fläche des 6 Teile Puzzles von Silvan
+# 20879 mm: Oberfläche des 6 Teile Puzzles von Silvan
 EXPECTED_TOTAL_PART_AREA_MM2 = 20879
 # Erlaubte Flächenabweichung. 0.01 = ±1 %.
 MAX_TOTAL_AREA_ERROR_RATIO = 0.01
@@ -407,16 +394,7 @@ def clearAlgoInputFolder():
     return algoInputDirPath
 
 
-def showImage(windowName, image, waitMs):
-    cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
-    cv2.imshow(windowName, image)
-    cv2.waitKey(waitMs)
-    cv2.destroyWindow(windowName)
 
-
-def showDebugImage(windowName, image):
-    if DEBUG_SHOW_IMAGES:
-        showImage(windowName, image, DEBUG_WAIT_MS)
 
 
 def rotateImageIfNeeded(imageBgr):
@@ -1608,9 +1586,10 @@ def printPartsInfo(detectedParts):
         print(f"  Schwerpunkt Warp-Pixel debug: x={partInfo['centroidX']:.3f}, y={partInfo['centroidY']:.3f}")
         print(f"  Flaeche: {partInfo['areaMm2']:.3f} mm2")
         print(f"  Bounding Box: x={partInfo['bboxX']}, y={partInfo['bboxY']}, w={partInfo['bboxW']}, h={partInfo['bboxH']}")
-        print(f"  Bild: {partInfo['outputPath']}")
-        print(f"  Maske: {partInfo['maskPath']}")
-        print(f"  Cutout: {partInfo['cutoutPath']}")
+        if SAVE_DEBUG_FILES:
+            print(f"  Bild: {partInfo.get('outputPath')}")
+            print(f"  Maske: {partInfo.get('maskPath')}")
+            print(f"  Cutout: {partInfo.get('cutoutPath')}")
         print(f"  Algorithmus-Maske: {partInfo.get('algoInputMaskPath')}")
 
     print()
@@ -1623,29 +1602,19 @@ def printPartsInfo(detectedParts):
 # ============================================================
 
 def main():
-    # Ablauf: Bild holen, Marker erkennen, A4 entzerren, Teile segmentieren,
-    # Debug-Dateien speichern und Algorithmus-Input schreiben.
-    outputImagePath = buildOutputPath(OUTPUT_IMAGE_FILENAME)
-    outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
-    outputWarpPath = buildOutputPath(OUTPUT_WARP_FILENAME)
-    outputMaskPath = buildOutputPath(OUTPUT_MASK_FILENAME)
-    outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
-    outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
-    outputHImageToWarpPath = buildOutputPath(OUTPUT_H_IMAGE_TO_WARP_PATH)
-
     try:
         imageBgr = getInputImage()
         imageBgr = rotateImageIfNeeded(imageBgr)
 
-        savePngImage(outputImagePath, imageBgr)
+        if SAVE_DEBUG_FILES:
+            outputImagePath = buildOutputPath(OUTPUT_IMAGE_FILENAME)
+            savePngImage(outputImagePath, imageBgr)
+            print(f"Input-Bild gespeichert: {outputImagePath}")
 
-        print(f"Input-Bild gespeichert: {outputImagePath}")
         print(f"Bildgroesse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
         print(buildRotationStatusText())
         printGeometryInfo()
         printCoordinateSystemInfo()
-
-        showDebugImage(INPUT_WINDOW_NAME, imageBgr)
 
         detectedMarkers, rejectedCandidates = detectArucoMarkers(imageBgr)
         printMarkerInfo(detectedMarkers)
@@ -1654,48 +1623,56 @@ def main():
         printCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
         printCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
 
-        debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners)
-        savePngImage(outputDebugPath, debugImageBgr)
-        print(f"Debug-Bild gespeichert: {outputDebugPath}")
-
-        showDebugImage(DEBUG_WINDOW_NAME, debugImageBgr)
+        if SAVE_DEBUG_FILES:
+            outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
+            debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners)
+            savePngImage(outputDebugPath, debugImageBgr)
+            print(f"Debug-Bild gespeichert: {outputDebugPath}")
 
         hImageToWarp = computeHomographyImageToWarp(a4Corners)
         printHomographyInfo(hImageToWarp)
 
-        np.save(str(outputHImageToWarpPath), hImageToWarp)
-        print(f"H gespeichert: {outputHImageToWarpPath}")
+        if SAVE_DEBUG_FILES:
+            outputHImageToWarpPath = buildOutputPath(OUTPUT_H_IMAGE_TO_WARP_PATH)
+            np.save(str(outputHImageToWarpPath), hImageToWarp)
+            print(f"H gespeichert: {outputHImageToWarpPath}")
 
         warpedImageBgr = warpImageToA4(imageBgr, hImageToWarp)
-        savePngImage(outputWarpPath, warpedImageBgr)
-        print(f"Warp-Bild gespeichert: {outputWarpPath}")
 
-        showDebugImage(WARP_WINDOW_NAME, warpedImageBgr)
+        if SAVE_DEBUG_FILES:
+            outputWarpPath = buildOutputPath(OUTPUT_WARP_FILENAME)
+            savePngImage(outputWarpPath, warpedImageBgr)
+            print(f"Warp-Bild gespeichert: {outputWarpPath}")
 
         binaryMask = buildPartsMask(warpedImageBgr)
-        savePngImage(outputMaskPath, binaryMask)
-        print(f"Maske gespeichert: {outputMaskPath}")
 
-        showDebugImage(MASK_WINDOW_NAME, binaryMask)
+        if SAVE_DEBUG_FILES:
+            outputMaskPath = buildOutputPath(OUTPUT_MASK_FILENAME)
+            savePngImage(outputMaskPath, binaryMask)
+            print(f"Maske gespeichert: {outputMaskPath}")
 
         detectedParts = findAllValidParts(binaryMask)
         detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
         addDerivedPartValues(detectedParts)
 
-        savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
+        if SAVE_DEBUG_FILES:
+            savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
+
         algoInputDirPath = saveAlgoInputFiles(binaryMask, detectedParts)
 
-        partsDebugImageBgr = drawPartsDebug(warpedImageBgr, detectedParts)
-        savePngImage(outputPartsDebugPath, partsDebugImageBgr)
-        print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
-
-        showDebugImage(PARTS_DEBUG_WINDOW_NAME, partsDebugImageBgr)
+        if SAVE_DEBUG_FILES:
+            outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
+            partsDebugImageBgr = drawPartsDebug(warpedImageBgr, detectedParts)
+            savePngImage(outputPartsDebugPath, partsDebugImageBgr)
+            print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
 
         areaValidationData = buildAreaValidationData(detectedParts)
 
-        debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
-        saveJson(outputJsonPath, debugJsonData)
-        print(f"Debug-JSON gespeichert: {outputJsonPath}")
+        if SAVE_DEBUG_FILES:
+            outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
+            debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
+            saveJson(outputJsonPath, debugJsonData)
+            print(f"Debug-JSON gespeichert: {outputJsonPath}")
 
         algoJsonData = buildAlgoInputJsonData(detectedParts, areaValidationData)
         algoJsonPath = algoInputDirPath / ALGO_INPUT_JSON_FILENAME
