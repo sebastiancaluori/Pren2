@@ -47,18 +47,18 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 0.4 # Solver-Aufloesung (Render+Score-Schleife)
+    solver_px_per_mm: float = 0.4  # Solver-Aufloesung (Render+Score-Schleife)
     analysis_px_per_mm: float = (
-        5.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
+        4.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
     )
-    finetune_max_px_per_mm: float = 5.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
+    finetune_max_px_per_mm: float = 4.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
     finetune_max_scale: float = 0.5  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
     # a5 = Quellbereich (physisches A4-Blatt, Kamera: 297x210 Querformat)
-    a4_width_mm: int = 128.5  # Ziel (A5-Blatt, Querformat: Breite)
-    a4_height_mm: int = 190.5 # Ziel (A5-Blatt: Höhe)
+    a4_width_mm: int = 128  # Ziel (A5-Blatt, Querformat: Breite)
+    a4_height_mm: int = 190  # Ziel (A5-Blatt: Höhe)
     a5_width_mm: int = 297  # Quelle (A4-Blatt, Querformat: Breite)
     a5_height_mm: int = 210  # Quelle (A4-Blatt: Höhe)
 
@@ -141,8 +141,8 @@ class SolverTuning:
     # --- Scoring (scorer.py) ---
     overlap_penalty: float = 2.0
     coverage_reward: float = 1.0
-    gap_penalty: float = 0.5
-    score_threshold: float = 240000.0
+    gap_penalty: float = 0.2
+    score_threshold: float = 100000.0
 
     # --- Corner Detection (corner_detector.py) ---
     # Alle Pixel-Werte in solver-px (= mm bei solver_px_per_mm=1.0)
@@ -155,9 +155,9 @@ class SolverTuning:
     corner_contour_epsilon: float = 0.030  # Anteil des Umfangs
 
     # --- Edge Detection (edge_detector.py) ---
-    edge_min_length: int = 10  # mm
+    edge_min_length: int = 15  # mm
     edge_min_straightness: float = 0.93
-    edge_min_score: float = 0.45
+    edge_min_score: float = 0.75
     edge_contour_epsilon: float = 0.012  # Anteil des Umfangs
 
     # --- Piece Classification (piece_analyzer.py) ---
@@ -165,7 +165,7 @@ class SolverTuning:
     classify_edge_threshold: float = 0.8
 
     # --- Corner Fitter (corner_fitter.py) ---
-    fitter_coarse_step: int = 5  # Grad
+    fitter_coarse_step: int = 6  # Grad
     fitter_fine_step: float = 0.5  # Grad
     fitter_fine_range: float = 10.0  # ±Grad um besten Winkel
     fitter_outside_limit: int = 50  # mm
@@ -176,7 +176,7 @@ class SolverTuning:
     # --- Iterative Solver (iterative_solver.py) ---
     initial_corner_count: int = 60
     max_corners_to_refine: int = 20
-    max_iterations: int = 600
+    max_iterations: int = 400
 
     # --- Edge Placement (edge_placement.py) ---
     slide_positions: int = (
@@ -187,15 +187,15 @@ class SolverTuning:
     )
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
-        1.0 # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
+        1.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
 
     # --- Fine-Tuning (fine_tuner.py) ---
-    finetune_xy_range: int = 4  # Pixel bei finetune_scale=1.0 (±2mm)
-    finetune_xy_step: int = 2  # Pixel pro Schritt → 5 Positionen pro Achse
-    finetune_theta_range: float = 3.0  # ±Grad
-    finetune_theta_step: float = 1.0  # Grad pro Schritt → 7 Winkel
-    finetune_max_passes: int = 3  # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
+    finetune_xy_range: int = 2  # Pixel bei finetune_scale=1.0 (±2mm)
+    finetune_xy_step: int = 1  # Pixel pro Schritt → 5 Positionen pro Achse
+    finetune_theta_range: float = 5.0  # ±Grad
+    finetune_theta_step: float = 0.5  # Grad pro Schritt → 7 Winkel
+    finetune_max_passes: int = 5  # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
 
     def scaled(self, resolution_scale: float) -> "SolverTuning":
         """Gibt eine Kopie zurueck, bei der alle Pixel-basierten Parameter mit
@@ -227,7 +227,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
+    enabled: bool = False  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass

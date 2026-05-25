@@ -204,12 +204,22 @@ class PieceAnalyzer:
                 piece.piece_type = "edge"
                 piece.analysis_confidence = edge_data_list[0].quality
             elif (num_corners > 0 and num_edges > 0):
-                if corner_data_list[0].quality >= edge_data_list[0].quality:
+                best_corner = corner_data_list[0].quality
+                best_edge = edge_data_list[0].quality
+                corner_meets_thresh = best_corner >= corner_thresh
+                edge_meets_thresh = best_edge >= edge_thresh
+                if corner_meets_thresh and not edge_meets_thresh:
                     piece.piece_type = "corner"
-                    piece.analysis_confidence = corner_data_list[0].quality
+                    piece.analysis_confidence = best_corner
+                elif edge_meets_thresh and not corner_meets_thresh:
+                    piece.piece_type = "edge"
+                    piece.analysis_confidence = best_edge
+                elif best_corner >= best_edge:
+                    piece.piece_type = "corner"
+                    piece.analysis_confidence = best_corner
                 else:
                     piece.piece_type = "edge"
-                    piece.analysis_confidence = edge_data_list[0].quality
+                    piece.analysis_confidence = best_edge
             elif (num_corners > 0):
                 piece.piece_type = "corner"
                 piece.analysis_confidence = corner_data_list[0].quality
