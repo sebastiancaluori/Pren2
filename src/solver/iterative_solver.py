@@ -97,17 +97,14 @@ class IterativeSolver:
         height, width = target.shape
         self._px_per_mm = px_per_mm
 
-        # Inflate piece masks by gap_dilation_mm so the scorer penalises placements
-        # that are spatially wrong even when physical gaps give extra wiggle room.
+        # Dilate the scoring target once so small physical gaps between pieces
+        # don't get penalised. Piece shapes and positions are untouched.
         dilation_px = int(round((self.tuning.gap_dilation_mm if self.tuning else 0) * px_per_mm))
         if dilation_px > 0:
             import cv2
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * dilation_px + 1, 2 * dilation_px + 1))
-            piece_shapes = {
-                pid: cv2.dilate(mask.astype(np.uint8), kernel).astype(mask.dtype)
-                for pid, mask in piece_shapes.items()
-            }
-            print(f"  Gap dilation: {dilation_px}px ({self.tuning.gap_dilation_mm}mm)")
+            target = cv2.dilate(target.astype(np.uint8), kernel).astype(target.dtype)
+            print(f"  Gap dilation: {dilation_px}px ({self.tuning.gap_dilation_mm}mm) applied to target")
         self.corner_fitter = CornerFitter(
             width=width, height=height, tuning=self.tuning
         )

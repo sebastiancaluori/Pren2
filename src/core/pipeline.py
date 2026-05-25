@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from src.solver.fine_tuner import FineTuner
+from src.solver.wall_align_finetuner import WallAlignFinetuner
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import MovementAnalyzer, calculate_movement_data_for_visualizer
 from src.solver.piece_analyzer import PieceAnalyzer
@@ -454,6 +455,25 @@ class PuzzlePipeline:
             self.logger.warning("  ! Keine gute Loesung gefunden")
         else:
             self.logger.info(f"  ✓ Loesung gefunden mit Score: {solution.score:.2f}")
+
+        # Phase 2b-pre: Wall-align finetune (push corners/edges flush to walls)
+        if not self.config.tuning.skip_wall_align and solution.remaining_placements:
+            self.logger.info("Phase 2b-pre: Wandausrichtung...")
+            dilation_px = int(round(self.config.tuning.gap_dilation_mm * self.resolution.solver_px_per_mm))
+            align_target = target
+            if dilation_px > 0:
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE, (2 * dilation_px + 1, 2 * dilation_px + 1)
+                )
+                align_target = cv2.dilate(target.astype(np.uint8), kernel).astype(target.dtype)
+            wall_aligner = WallAlignFinetuner(
+                renderer=self.renderer,
+                scorer=self.scorer,
+                slide_positions=self.config.tuning.wall_align_slide_positions,
+            )
+            solution.remaining_placements = wall_aligner.finetune(
+                solution.remaining_placements, piece_shapes, align_target
+            )
 
         # Phase 2b: Fine-tuning auf voller Aufloesung
         all_guesses_for_finetune = (

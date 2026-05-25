@@ -428,17 +428,40 @@ class SolverVisualizer(BoxLayout):
         return rotate_and_crop(shape, angle)
 
     def _render_guess_color(self, guess, debug=False):
-        """Render using the highest-resolution shapes available (native > fine > solver)."""
+        """Render using the highest-resolution shapes available (native > fine > solver).
+
+        Solver coordinates are snapped to walls in display space when the piece is
+        flush against a wall in solver space.  Without this, integer-rounding
+        differences between solver-scale and display-scale piece widths create a
+        visible gap that doesn't exist in the actual placement data.
+        """
         shapes, ratio = self._best_display_shapes()
+        solver_shapes = self.solver_data["piece_shapes"]
 
         target = self.solver_data["target"]
-        disp_w = int(round(target.shape[1] * ratio))
-        disp_h = int(round(target.shape[0] * ratio))
+        solver_h, solver_w = target.shape
+        disp_w = int(round(solver_w * ratio))
+        disp_h = int(round(solver_h * ratio))
         disp_renderer = GuessRenderer(width=disp_w, height=disp_h)
-        scaled_guess = [
-            {**p, "x": p["x"] * ratio, "y": p["y"] * ratio}
-            for p in guess
-        ]
+
+        scaled_guess = []
+        for p in guess:
+            pid = p["piece_id"]
+            theta = p["theta"]
+            s_shape = solver_shapes.get(pid)
+            d_shape = shapes.get(pid)
+            if s_shape is not None and d_shape is not None:
+                rs = rotate_and_crop(s_shape, theta)
+                rd = rotate_and_crop(d_shape, theta)
+                ps_h, ps_w = rs.shape
+                pd_h, pd_w = rd.shape
+                x_s, y_s = p["x"], p["y"]
+                x_d = 0.0 if x_s < 0.5 else (float(disp_w - pd_w) if x_s + ps_w > solver_w - 0.5 else x_s * ratio)
+                y_d = 0.0 if y_s < 0.5 else (float(disp_h - pd_h) if y_s + ps_h > solver_h - 0.5 else y_s * ratio)
+                scaled_guess.append({**p, "x": x_d, "y": y_d})
+            else:
+                scaled_guess.append({**p, "x": p["x"] * ratio, "y": p["y"] * ratio})
+
         if debug:
             return disp_renderer.render_debug(scaled_guess, shapes)
         return disp_renderer.render_color(scaled_guess, shapes)
