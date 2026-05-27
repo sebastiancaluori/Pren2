@@ -1,6 +1,5 @@
 # cam_module.py
 
-# tbd Logik einbauen falls keine passende Teileanzahl bzw Fläche erkannt wurde.
 # tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
 
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
@@ -53,7 +52,16 @@ IMAGE_SOURCE = "camera"
 IMAGE_WIDTH = 4608
 # Aufnahmehöhe der Pi Camera. Muss zur gewünschten Kameraauflösung passen.
 IMAGE_HEIGHT = 2592
-# Wartezeit nach Kamerastart. Grösser = stabilere Belichtung/Weissabgleich, aber langsamer.
+
+# Wartezeit nach Kamerastart. Grösser = stabilere erste Aufnahme, aber langsamer.
+# Bei manuellen Kameraeinstellungen (AeEnable=False, AwbEnable=False,
+# feste ExposureTime, fester AnalogueGain, feste ColourGains) kann die Wartezeit
+# kürzer sein als bei Automatik, da Belichtung und Weissabgleich nicht einregeln müssen.
+# Eine kurze Wartezeit bleibt trotzdem sinnvoll für stabile Frames, Fokus und Sensor-Streaming.
+# Falls die Kamera extern gestartet wird und vor dem Capture bereits genug Zeit erhält,
+# kann dieser Wert auf 0.0 gesetzt werden.
+# Für robuste Tests trotzdem lieber bei 3.0 lassen. So bleibt die erste Aufnahme
+# auch dann stabiler, falls AeEnable oder AwbEnable aktiviert wurde.
 STARTUP_WAIT_SECONDS = 3.0
 
 # Bild um 90 Grad im Uhrzeigersinn drehen, falls die Kamera mechanisch verdreht ist.
@@ -111,7 +119,7 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
 # False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
-SAVE_DEBUG_FILES = True
+SAVE_DEBUG_FILES = False
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -129,7 +137,7 @@ A4_WIDTH_MM = 297.0
 A4_HEIGHT_MM = 210.0
 # Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
 # Interne Auflösung mit der das Cam Modul arbeitet, so hoch wie möglich bzw sinnvoll
-WORKING_INTERNAL_PX_PER_MM = 7.0
+WORKING_INTERNAL_PX_PER_MM = 6.0
 # Auflösung der Bilder die der Algorithmus erhält, so tief wie nötig
 ALGO_INPUT_PX_PER_MM = 3.0
 
@@ -652,7 +660,35 @@ def extractA4Corners(detectedMarkers):
 
     return a4Corners, referenceCorners
 
+def calculate_native_a4_pixel_density(a4_corners_px):
+    top_left = np.asarray(a4_corners_px["top_left"], dtype=np.float32)
+    top_right = np.asarray(a4_corners_px["top_right"], dtype=np.float32)
+    bottom_right = np.asarray(a4_corners_px["bottom_right"], dtype=np.float32)
+    bottom_left = np.asarray(a4_corners_px["bottom_left"], dtype=np.float32)
 
+    # Zwei Breiten messen: obere und untere A4-Kante.
+    width_top_px = np.linalg.norm(top_right - top_left)
+    width_bottom_px = np.linalg.norm(bottom_right - bottom_left)
+
+    # Zwei Höhen messen: linke und rechte A4-Kante.
+    height_left_px = np.linalg.norm(top_left - bottom_left)
+    height_right_px = np.linalg.norm(top_right - bottom_right)
+
+    # Mittelwert ist robuster, falls Kamera/A4 leicht schräg stehen.
+    measured_width_px = (width_top_px + width_bottom_px) / 2.0
+    measured_height_px = (height_left_px + height_right_px) / 2.0
+
+    native_px_per_mm_x = measured_width_px / A4_WIDTH_MM
+    native_px_per_mm_y = measured_height_px / A4_HEIGHT_MM
+    native_px_per_mm_avg = (native_px_per_mm_x + native_px_per_mm_y) / 2.0
+
+    return {
+        "native_px_per_mm_x": float(native_px_per_mm_x),
+        "native_px_per_mm_y": float(native_px_per_mm_y),
+        "native_px_per_mm_avg": float(native_px_per_mm_avg),
+        "measured_width_px": float(measured_width_px),
+        "measured_height_px": float(measured_height_px),
+    }
 # ============================================================
 # HOMOGRAPHIE / KOORDINATEN
 # ============================================================
@@ -1091,6 +1127,11 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
 # JSON-EXPORT
 # ============================================================
 
+
+# Die Json fungiert als Schnittstelle zwischen cam_modul und dem Solver.
+# Dh: Der Konsistenz wegen sollten einmal eingetragene Keys ohne Absprache weder umbenannt noch gelöscht werden
+# Ergänzungen sind aber möglich, idealerweise in buildAlgoInputJsonData() da die ganze Json Generierung ein Kandidat
+# für Refactoring ist ( div Funktionen inkl. debug Infos in buildAlgoInputJsonData() integrieren bzw sammeln)
 def buildGeometryJsonData():
     # JSON-Hilfsdaten zur Geometrie. JSON-Key-Namen bleiben bewusst stabil.
     return {
@@ -1571,7 +1612,7 @@ def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners):
 # KONSOLENAUSGABEN
 # ============================================================
 
-def printMarkerInfo(detectedMarkers):
+def printConsoleMarkerInfo(detectedMarkers):
     print()
     print("Erkannte Marker:")
 
@@ -1589,7 +1630,7 @@ def printMarkerInfo(detectedMarkers):
             print(f"  Ecke {cornerIndex}: x={x:.1f}, y={y:.1f}")
 
 
-def printCornerInfo(title, corners):
+def printConsoleCornerInfo(title, corners):
     print()
     print(title)
 
@@ -1599,7 +1640,7 @@ def printCornerInfo(title, corners):
         print(f"- {name}: x={x:.1f}, y={y:.1f}")
 
 
-def printGeometryInfo():
+def printConsoleGeometryInfo():
     frameWidthMm, frameHeightMm = getFrameSizeMm()
 
     print()
@@ -1612,14 +1653,14 @@ def printGeometryInfo():
     print(f"- Offset unten: {FRAME_OFFSET_BOTTOM_MM:.1f} mm")
 
 
-def printCoordinateSystemInfo():
+def printConsoleCoordinateSystemInfo():
     print()
     print("Koordinatensystem:")
     print(f"- Ursprung: {COORDINATE_ORIGIN}")
     print(f"- Beschreibung: {buildCoordinateOriginDescription()}")
 
 
-def printHomographyInfo(hImageToWarp):
+def printConsoleHomographyInfo(hImageToWarp):
     print()
     print("Homographie Bild -> Warp-Pixel:")
     print(hImageToWarp)
@@ -1631,7 +1672,7 @@ def printHomographyInfo(hImageToWarp):
     print(f"PX_PER_MM: {WORKING_INTERNAL_PX_PER_MM}")
 
 
-def printPartsInfo(detectedParts):
+def printConsolePartsInfo(detectedParts):
     print()
     print("Erkannte Teile:")
 
@@ -1671,17 +1712,23 @@ def main():
             savePngImage(outputImagePath, imageBgr)
             print(f"Input-Bild gespeichert: {outputImagePath}")
 
-        print(f"Bildgroesse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
+        print(f"Bildgrösse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
         print(buildRotationStatusText())
-        printGeometryInfo()
-        printCoordinateSystemInfo()
+        printConsoleGeometryInfo()
+        printConsoleCoordinateSystemInfo()
 
         detectedMarkers, rejectedCandidates = detectArucoMarkers(imageBgr)
-        printMarkerInfo(detectedMarkers)
+        printConsoleMarkerInfo(detectedMarkers)
 
         a4Corners, referenceCorners = extractA4Corners(detectedMarkers)
-        printCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
-        printCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
+        printConsoleCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
+        printConsoleCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
+
+        native_density = calculate_native_a4_pixel_density(a4Corners)
+        print("Native Pixeldichte der A4-Fläche:")
+        print(f"- x:   {native_density['native_px_per_mm_x']:.2f} px/mm")
+        print(f"- y:   {native_density['native_px_per_mm_y']:.2f} px/mm")
+        print(f"- avg: {native_density['native_px_per_mm_avg']:.2f} px/mm")
 
         if SAVE_DEBUG_FILES:
             outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
@@ -1690,7 +1737,7 @@ def main():
             print(f"Debug-Bild gespeichert: {outputDebugPath}")
 
         hImageToWarp = computeHomographyImageToWarp(a4Corners)
-        printHomographyInfo(hImageToWarp)
+        printConsoleHomographyInfo(hImageToWarp)
 
         if SAVE_DEBUG_FILES:
             outputHImageToWarpPath = buildOutputPath(OUTPUT_H_IMAGE_TO_WARP_PATH)
@@ -1739,7 +1786,7 @@ def main():
         saveJson(algoJsonPath, algoJsonData)
         print(f"Algorithmus-Input gespeichert: {algoInputDirPath}")
 
-        printPartsInfo(detectedParts)
+        printConsolePartsInfo(detectedParts)
         printAreaValidationInfo(areaValidationData)
 
     except Exception as e:
