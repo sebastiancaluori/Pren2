@@ -26,7 +26,7 @@ from ..solver.validation.scorer import PlacementScorer
 from ..ui.simulator.guess_renderer import GuessRenderer
 from ..utils.logger import setup_logger
 from ..vision.camera_loader import CameraLoader
-from ..vision.cam_module import (main as runCameraModule, initCamera, stopCamera)
+from ..vision.cam_module import (main as runCameraModule, initCameraIfAvailable, stopCamera, isPiCameraAvailable)
 from ..vision.mock_puzzle_creator import MockPuzzleGenerator
 from .config import Config
 
@@ -93,7 +93,7 @@ class PuzzlePipeline:
         cam = None
 
         try:
-            cam = initCamera()
+            cam= initCameraIfAvailable()
             if self.config.hardware.enabled:
                 from src.hardware.motion_control.MotionControlCommunication import (
                     wait_for_robot_start,

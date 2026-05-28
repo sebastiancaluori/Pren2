@@ -438,6 +438,11 @@ def rotateImageIfNeeded(imageBgr):
 # BILDEINGABE
 # ============================================================
 
+def initCameraIfAvailable():
+    if not isPiCameraAvailable():
+        return None
+    return initCamera()
+
 def isPiCameraAvailable():
     return Picamera2 is not None
 
