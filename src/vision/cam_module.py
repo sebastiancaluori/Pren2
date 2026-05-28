@@ -1,13 +1,6 @@
 # cam_module.py
 
-# ---------------TBD----------------------
-#  -Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
-#  oder externes looping bis Aruco erkannt
-#  -Momentan wird der Input Ordner für den algo kosequent geleert falls irgendwas schiefgeht->externer check ob cam_modul
-#  geliefert hat. am besten über die __main__ die einen erfolgstatus zurückgibt true/false
-#  -Aruco Fehler nochmal checken, dürfen keine harten Fehler sein
-#  -Debug Speichern noch bissl unruhig/verstreut
-# ---------------TBD----------------------
+# tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
 
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
 # und Export der Algorithmus-Eingaben.
@@ -43,8 +36,8 @@ INPUT_IMAGE_PATH = PROJECT_ROOT / "src" / "vision" / "1.png"
 ALGO_INPUT_JSON_FILENAME = "parts.json"
 # Präfix für die Teilmasken im Algorithmus-Input. Beispiel: piece_0.png.
 ALGO_INPUT_MASK_PREFIX = "piece_"
-# True = Input-Ordner vor jedem Lauf leeren, damit keine alten Masken übrig bleiben.
-CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
+# Der Input-Ordner wird bei jedem Start des Cam-Moduls geleert.
+# Neue Algorithmus-Dateien werden nur nach gültiger Erkennung geschrieben.
 
 
 # ============================================================
@@ -69,7 +62,7 @@ IMAGE_HEIGHT = 2592
 # kann dieser Wert auf 0.0 gesetzt werden.
 # Für robuste Tests trotzdem lieber bei 3.0 lassen. So bleibt die erste Aufnahme
 # auch dann stabiler, falls AeEnable oder AwbEnable aktiviert wurde.
-STARTUP_WAIT_SECONDS = 3.0
+STARTUP_WAIT_SECONDS = 2.0
 
 # Bild um 90 Grad im Uhrzeigersinn drehen, falls die Kamera mechanisch verdreht ist.
 ROTATE_90_CLOCKWISE = False
@@ -126,7 +119,7 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
 # False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
-SAVE_DEBUG_FILES = True
+SAVE_DEBUG_FILES = False
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -268,7 +261,7 @@ CUTOUT_BACKGROUND_VALUE = 255
 # Erwartete Gesamtfläche aller Puzzleteile in mm2.
 # 20879 mm: Oberfläche des 6 Teile Puzzles von Silvan
 EXPECTED_TOTAL_PART_AREA_MM2 = 20879
-# Erlaubte Flächenabweichung. 0.01 = +-1 %.
+# Erlaubte Flächenabweichung. 0.03 = +-3 %.
 MAX_TOTAL_AREA_ERROR_RATIO = 0.03
 
 
@@ -398,10 +391,9 @@ def savePngImage(path, image):
 
 
 def clearAlgoInputFolder():
+    # Leert den Algorithmus-Input-Ordner vollständig.
+    # Der Ordner selbst bleibt bestehen.
     algoInputDirPath = buildDirPath(DESTINATION_TO_ALGO_INPUT_FOLDER)
-
-    if not CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE:
-        return algoInputDirPath
 
     for path in algoInputDirPath.iterdir():
         if path.is_file():
@@ -1088,9 +1080,11 @@ def resizeMaskForAlgoInput(maskImage):
 
 def saveAlgoInputFiles(binaryMask, detectedParts):
     # Speichert nur die Masken, welche der Algorithmus später als Input braucht.
+    # Der Input-Ordner wird bewusst nicht hier geleert, sondern einmal zentral
+    # am Anfang von main().
     # Intern wird mit WORKING_INTERNAL_PX_PER_MM gearbeitet.
     # Für den Algorithmus werden die Masken auf ALGO_INPUT_PX_PER_MM runterskaliert.
-    algoInputDirPath = clearAlgoInputFolder()
+    algoInputDirPath = buildDirPath(DESTINATION_TO_ALGO_INPUT_FOLDER)
 
     scaleFactor = getAlgoInputScaleFactor()
 
@@ -1711,6 +1705,9 @@ def printConsolePartsInfo(detectedParts):
 
 def main():
     try:
+        clearAlgoInputFolder()
+        print(f"Algorithmus-Input-Ordner geleert: {DESTINATION_TO_ALGO_INPUT_FOLDER}")
+
         imageBgr = getInputImage()
         imageBgr = rotateImageIfNeeded(imageBgr)
 
@@ -1781,13 +1778,11 @@ def main():
         if SAVE_DEBUG_FILES:
             savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
 
-        if SAVE_DEBUG_FILES:
             outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
             partsDebugImageBgr = drawPartsDebug(warpedImageBgr, detectedParts)
             savePngImage(outputPartsDebugPath, partsDebugImageBgr)
             print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
 
-        if SAVE_DEBUG_FILES:
             outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
             debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
             saveJson(outputJsonPath, debugJsonData)
@@ -1802,15 +1797,16 @@ def main():
 
             print(f"Algorithmus-Input gespeichert: {algoInputDirPath}")
         else:
-            clearAlgoInputFolder()
             print()
             print("Algorithmus-Input wurde NICHT gespeichert.")
-            print("Der Input-Ordner wurde geleert, damit der Solver nicht mit alten Daten weiterläuft.")
+            print(" Der Input-ordner bleibt leer, damit der Solver nicht mit alten Daten weiterläuft.")
             print(f"- Teileanzahl gültig: {partCountIsValid}")
             print(f"- Fläche gültig: {areaIsValid}")
+
     except Exception as e:
         print("Fehler:")
         print(e)
+
 
 if __name__ == "__main__":
     main()
