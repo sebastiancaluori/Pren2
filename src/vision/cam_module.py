@@ -92,13 +92,8 @@ CAMERA_CONTROLS = {
 
 # Hauptordner für Debug-Ausgaben der Vision-Pipeline.
 OUTPUT_DIR = PROJECT_ROOT / "src" / "vision" / "output"
-# Speichert ausgeschnittene Teile als Debug-Bilder.
+# Speichert Kopien der finalen Algorithmus-Teilemasken für Debug-Zwecke.
 OUTPUT_PARTS_DIR = OUTPUT_DIR / "parts"
-# Speichert die einzelnen Teilmasken für die Kontrolle.
-OUTPUT_PART_MASKS_DIR = OUTPUT_DIR / "part_masks"
-# Speichert Teil-Cutouts: Teil sichtbar, Hintergrund weiss.
-OUTPUT_PART_CUTOUTS_DIR = OUTPUT_DIR / "part_cutouts"
-
 # Namenspräfix für alle Debug-Dateien dieses Laufs.
 RUN_NAME = "debug_"
 
@@ -402,6 +397,20 @@ def clearAlgoInputFolder():
             shutil.rmtree(path)
 
     return algoInputDirPath
+
+def clearDebugOutputFolder():
+    # Leert den Output-Ordner vollständig.
+    # Der Ordner selbst bleibt bestehen.
+    outputDirPath = buildDirPath(OUTPUT_DIR)
+
+    for path in outputDirPath.iterdir():
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+
+    return outputDirPath
+
 
 
 
@@ -1021,43 +1030,6 @@ def buildSinglePartMask(fullBinaryMask, contour, cropBounds):
     return singleMask[y1:y2, x1:x2].copy()
 
 
-def buildPartCutout(croppedImageBgr, croppedSingleMask):
-    # Erstellt ein Debug-Cutout: Teil bleibt sichtbar, alles andere wird weiss.
-    cutoutImageBgr = np.full_like(croppedImageBgr, CUTOUT_BACKGROUND_VALUE)
-    cutoutImageBgr[croppedSingleMask > 0] = croppedImageBgr[croppedSingleMask > 0]
-
-    return cutoutImageBgr
-
-
-def savePartOutputs(warpedImageBgr, binaryMask, detectedParts):
-    partsDirPath = buildDirPath(OUTPUT_PARTS_DIR)
-    partMasksDirPath = buildDirPath(OUTPUT_PART_MASKS_DIR)
-    partCutoutsDirPath = buildDirPath(OUTPUT_PART_CUTOUTS_DIR)
-
-    for partInfo in detectedParts:
-        croppedImageBgr, cropBounds = cropPartImage(
-            warpedImageBgr,
-            partInfo["bboxX"],
-            partInfo["bboxY"],
-            partInfo["bboxW"],
-            partInfo["bboxH"],
-        )
-
-        croppedSingleMask = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
-        cutoutImageBgr = buildPartCutout(croppedImageBgr, croppedSingleMask)
-
-        outputPartPath = partsDirPath / f"{partInfo['partName']}.png"
-        outputPartMaskPath = partMasksDirPath / f"{partInfo['partName']}_mask.png"
-        outputPartCutoutPath = partCutoutsDirPath / f"{partInfo['partName']}_cutout.png"
-
-        savePngImage(outputPartPath, croppedImageBgr)
-        savePngImage(outputPartMaskPath, croppedSingleMask)
-        savePngImage(outputPartCutoutPath, cutoutImageBgr)
-
-        partInfo["outputPath"] = str(outputPartPath)
-        partInfo["maskPath"] = str(outputPartMaskPath)
-        partInfo["cutoutPath"] = str(outputPartCutoutPath)
-
 
 def getAlgoInputScaleFactor():
     return ALGO_INPUT_PX_PER_MM / WORKING_INTERNAL_PX_PER_MM
@@ -1085,8 +1057,7 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
     # Intern wird mit WORKING_INTERNAL_PX_PER_MM gearbeitet.
     # Für den Algorithmus werden die Masken auf ALGO_INPUT_PX_PER_MM runterskaliert.
     algoInputDirPath = buildDirPath(DESTINATION_TO_ALGO_INPUT_FOLDER)
-
-    scaleFactor = getAlgoInputScaleFactor()
+    debugPartsDirPath = buildDirPath(OUTPUT_PARTS_DIR) if SAVE_DEBUG_FILES else None
 
     for i, partInfo in enumerate(detectedParts):
         cropBounds = (
@@ -1095,7 +1066,6 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
             partInfo["bboxX"] + partInfo["bboxW"],
             partInfo["bboxY"] + partInfo["bboxH"],
         )
-
         croppedSingleMaskInternal = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
         croppedSingleMaskAlgo = resizeMaskForAlgoInput(croppedSingleMaskInternal)
 
@@ -1107,11 +1077,10 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
         partInfo["algoInputMaskFilename"] = algoMaskFilename
         partInfo["algoInputMaskPath"] = str(algoMaskPath)
 
-        # Bounding Box bezogen auf die runterskalierte Algorithmus-Maske.
-        partInfo["algoInputBboxX"] = int(round(partInfo["bboxX"] * scaleFactor))
-        partInfo["algoInputBboxY"] = int(round(partInfo["bboxY"] * scaleFactor))
-        partInfo["algoInputBboxW"] = int(round(partInfo["bboxW"] * scaleFactor))
-        partInfo["algoInputBboxH"] = int(round(partInfo["bboxH"] * scaleFactor))
+        if debugPartsDirPath is not None:
+            debugMaskPath = debugPartsDirPath / algoMaskFilename
+            shutil.copy2(algoMaskPath, debugMaskPath)
+            partInfo["debugAlgoInputMaskPath"] = str(debugMaskPath)
 
         # Schwerpunkt in Pixeln passend zur Algorithmus-Skalierung.
         # Die mm-Werte bleiben die Wahrheit; daraus werden die Algo-Pixel berechnet.
@@ -1168,24 +1137,10 @@ def buildPartsJsonList(detectedParts, includePaths):
                 "x": round(partInfo["centroidXpx"], 6),
                 "y": round(partInfo["centroidYpx"], 6),
             }
-
-            boundingBoxPx = {
-                "x": partInfo["bboxX"],
-                "y": partInfo["bboxY"],
-                "w": partInfo["bboxW"],
-                "h": partInfo["bboxH"],
-            }
         else:
             centroidPx = {
                 "x": round(partInfo["algoInputCentroidXpx"], 6),
                 "y": round(partInfo["algoInputCentroidYpx"], 6),
-            }
-
-            boundingBoxPx = {
-                "x": partInfo["algoInputBboxX"],
-                "y": partInfo["algoInputBboxY"],
-                "w": partInfo["algoInputBboxW"],
-                "h": partInfo["algoInputBboxH"],
             }
 
         partData = {
@@ -1197,16 +1152,19 @@ def buildPartsJsonList(detectedParts, includePaths):
             },
             "centroid_px": centroidPx,
             "area_mm2": round(partInfo["areaMm2"], 6),
-            "bounding_box_px": boundingBoxPx,
             "algo_input_mask_filename": partInfo.get("algoInputMaskFilename"),
         }
 
         if includePaths:
             partData.update({
-                "image_path": partInfo.get("outputPath"),
-                "mask_path": partInfo.get("maskPath"),
-                "cutout_path": partInfo.get("cutoutPath"),
+                "bounding_box_px": {
+                    "x": partInfo["bboxX"],
+                    "y": partInfo["bboxY"],
+                    "w": partInfo["bboxW"],
+                    "h": partInfo["bboxH"],
+                },
                 "algo_input_mask_path": partInfo.get("algoInputMaskPath"),
+                "debug_algo_input_mask_path": partInfo.get("debugAlgoInputMaskPath"),
             })
 
         partsJson.append(partData)
@@ -1689,9 +1647,7 @@ def printConsolePartsInfo(detectedParts):
         print(f"  Flaeche: {partInfo['areaMm2']:.3f} mm2")
         print(f"  Bounding Box: x={partInfo['bboxX']}, y={partInfo['bboxY']}, w={partInfo['bboxW']}, h={partInfo['bboxH']}")
         if SAVE_DEBUG_FILES:
-            print(f"  Bild: {partInfo.get('outputPath')}")
-            print(f"  Maske: {partInfo.get('maskPath')}")
-            print(f"  Cutout: {partInfo.get('cutoutPath')}")
+            print(f"  Debug-Kopie Algorithmus-Maske: {partInfo.get('debugAlgoInputMaskPath')}")
         print(f"  Algorithmus-Maske: {partInfo.get('algoInputMaskPath')}")
 
     print()
@@ -1705,8 +1661,13 @@ def printConsolePartsInfo(detectedParts):
 
 def main():
     try:
+        # Bewusst am Anfang. Der Solver sieht innerhalb eines runs niemals zu keinem Zeitpunkt etwas,
+        # das nicht explizit innerhalb des aktuellen runs abgesegnet wurde.
         clearAlgoInputFolder()
         print(f"Algorithmus-Input-Ordner geleert: {DESTINATION_TO_ALGO_INPUT_FOLDER}")
+
+        clearDebugOutputFolder()
+        print(f"Debug-Output-Ordner geleert: {OUTPUT_DIR}")
 
         imageBgr = getInputImage()
         imageBgr = rotateImageIfNeeded(imageBgr)
@@ -1772,21 +1733,13 @@ def main():
         areaIsValid = areaValidationData["is_valid"]
         detectionIsValid = partCountIsValid and areaIsValid
 
-        printConsolePartsInfo(detectedParts)
         printAreaValidationInfo(areaValidationData)
 
         if SAVE_DEBUG_FILES:
-            savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
-
             outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
             partsDebugImageBgr = drawPartsDebug(warpedImageBgr, detectedParts)
             savePngImage(outputPartsDebugPath, partsDebugImageBgr)
             print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
-
-            outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
-            debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
-            saveJson(outputJsonPath, debugJsonData)
-            print(f"Debug-JSON gespeichert: {outputJsonPath}")
 
         if detectionIsValid:
             algoInputDirPath = saveAlgoInputFiles(binaryMask, detectedParts)
@@ -1799,9 +1752,17 @@ def main():
         else:
             print()
             print("Algorithmus-Input wurde NICHT gespeichert.")
-            print(" Der Input-ordner bleibt leer, damit der Solver nicht mit alten Daten weiterläuft.")
+            print("Der Input-Ordner bleibt leer, damit der Solver nicht mit alten Daten weiterläuft.")
             print(f"- Teileanzahl gültig: {partCountIsValid}")
             print(f"- Fläche gültig: {areaIsValid}")
+
+        printConsolePartsInfo(detectedParts)
+
+        if SAVE_DEBUG_FILES:
+            outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
+            debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
+            saveJson(outputJsonPath, debugJsonData)
+            print(f"Debug-JSON gespeichert: {outputJsonPath}")
 
     except Exception as e:
         print("Fehler:")
