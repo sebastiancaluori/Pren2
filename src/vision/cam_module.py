@@ -444,8 +444,10 @@ def captureImageFromCamera():
         print("Initialisiere Kamera...")
         picam2 = Picamera2()
 
+        # 8 Bit Farbkanal, BGR da opencv default BGR erwartet
         cameraConfig = picam2.create_still_configuration(
-            main={"size": (IMAGE_WIDTH, IMAGE_HEIGHT)}
+            main={"size": (IMAGE_WIDTH, IMAGE_HEIGHT),
+                  "format": "BGR888",},
         )
         picam2.configure(cameraConfig)
         picam2.set_controls(CAMERA_CONTROLS)
