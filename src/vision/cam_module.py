@@ -12,6 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
 try:
     from picamera2 import Picamera2
 except (ImportError, ModuleNotFoundError):
@@ -53,26 +54,30 @@ IMAGE_WIDTH = 4608
 # Aufnahmehöhe der Pi Camera. Muss zur gewünschten Kameraauflösung passen.
 IMAGE_HEIGHT = 2592
 
-# Wartezeit nach Kamerastart. Grösser = stabilere erste Aufnahme, aber langsamer.
-# Bei manuellen Kameraeinstellungen (AeEnable=False, AwbEnable=False,
-# feste ExposureTime, fester AnalogueGain, feste ColourGains) kann die Wartezeit
-# kürzer sein als bei Automatik, da Belichtung und Weissabgleich nicht einregeln müssen.
-# Eine kurze Wartezeit bleibt trotzdem sinnvoll für stabile Frames, Fokus und Sensor-Streaming.
-# Falls die Kamera extern gestartet wird und vor dem Capture bereits genug Zeit erhält,
-# kann dieser Wert auf 0.0 gesetzt werden.
-# Für robuste Tests trotzdem lieber bei 3.0 lassen. So bleibt die erste Aufnahme
-# auch dann stabiler, falls AeEnable oder AwbEnable aktiviert wurde.
-STARTUP_WAIT_SECONDS = 2.0
+
+STARTUP_WAIT_SECONDS = 3.0
 
 # Bild um 90 Grad im Uhrzeigersinn drehen, falls die Kamera mechanisch verdreht ist.
 ROTATE_90_CLOCKWISE = False
 # Bild um 180 Grad drehen. Nie gleichzeitig mit ROTATE_90_CLOCKWISE aktivieren.
 ROTATE_180 = False
-
+# Initial Kameraeinstellungen für den Start innerhalb der Pipeline
+INIT_CAMERA_CONTROLS_FOR_PIPELINE = {
+    # Automatische Belichtung. False = manueller ExposureTime-Wert wird verwendet.
+    "AeEnable": False,
+    # Automatischer Weissabgleich. False = ColourGains unten werden verwendet.
+    "AwbEnable": False,
+    # Belichtungszeit in Mikrosekunden. Höher = heller, zu hoch = A4 kann ausbrennen.
+    "ExposureTime": 6000,  # Mikrosekunden
+    # Analoge Verstärkung. Höher = heller, aber mehr Bildrauschen.
+    "AnalogueGain": 1.0,
+    # Rot-/Blau-Verstärkung für Weissabgleich. Höherer Wert = jeweiliger Farbkanal stärker.
+    "ColourGains": (1.5, 1.5),
+}
 # Manuelle Kameraeinstellungen für Tests gegen Überbelichtung.
 # Ohne Unterbeleuchtung, Kunstlicht, exposureTime rund 8000
 # Mit Unterbeleuchtung, Kunstlicht 6000
-CAMERA_CONTROLS = {
+CAMERA_CONTROLS_FOR_INTERNAL_USE = {
     # Automatische Belichtung. False = manueller ExposureTime-Wert wird verwendet.
     "AeEnable": False,
     # Automatischer Weissabgleich. False = ColourGains unten werden verwendet.
@@ -437,47 +442,95 @@ def isPiCameraAvailable():
     return Picamera2 is not None
 
 
-def captureImageFromCamera():
-    picam2 = None
+def initCamera():
+    # Erstellt, konfiguriert und startet die Pi Camera.
+    # Rückgabe ist eine gestartete Kamera, die später an captureImageFromInitializedCamera(cam)
+    # übergeben werden kann.
+    if Picamera2 is None:
+        raise RuntimeError("Picamera2 ist auf dieser Maschine nicht verfügbar.")
+
+    print("Initialisiere Kamera...")
+    cam = Picamera2()
+
+    # BGR888 = 8 Bit pro Farbkanal, Reihenfolge Blue/Green/Red.
+    # Passt direkt zu OpenCV, da OpenCV standardmässig BGR erwartet.
+    cameraConfig = cam.create_still_configuration(
+        main={
+            "size": (IMAGE_WIDTH, IMAGE_HEIGHT),
+            "format": "BGR888",
+        },
+    )
+
+    cam.configure(cameraConfig)
+    cam.set_controls(INIT_CAMERA_CONTROLS_FOR_PIPELINE)
+
+    print("Starte Kamera...")
+    cam.start()
+    cam._started_at = time.monotonic()
+
+    return cam
+
+
+def captureImageFromInitializedCamera(cam, controls=None, waitSecondsBetweeCapture=0.0):
+    # Nimmt ein Bild mit einer bereits gestarteten Kamera auf.
+    # Hier wird die Kamera nicht neu initialisiert und nicht gestoppt.
+    if cam is None:
+        # Platzhalter falls cam aus irgendeinem Grunde nicht bereit
+        print("!!!!Keine Kamera gefunden obwohl sie vorhanden sein müsste")
+        time.sleep(3)
+        print("mache jetzt ohne Prüfung weiter")
+
+    startedAt = getattr(cam, "_started_at", None)
+
+    if STARTUP_WAIT_SECONDS > 0 and startedAt is not None:
+        elapsedSeconds = time.monotonic() - startedAt
+        remainingSeconds = STARTUP_WAIT_SECONDS - elapsedSeconds
+
+        if remainingSeconds > 0:
+            print(
+                f"Kamera läuft erst seit {elapsedSeconds:.1f} Sekunden, "
+                f"warte noch {remainingSeconds:.1f} Sekunden..."
+            )
+            time.sleep(remainingSeconds)
+
+    print("Nehme Bild auf...")
+    imageBgr = cam.capture_array()
+
+    grayImage = cv2.cvtColor(imageBgr, cv2.COLOR_BGR2GRAY)
+    overexposedPixels = np.sum(grayImage >= 250)
+    totalPixels = grayImage.shape[0] * grayImage.shape[1]
+    overexposedRatio = overexposedPixels / totalPixels
+
+    print(f"überbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
+
+    return imageBgr
+
+
+def stopCamera(cam):
+    # Stoppt eine gestartete Kamera.
+    # Die Funktion ist absichtlich tolerant, damit Cleanup im finally-Block der pipeline.py robust bleibt.
+    if cam is None:
+        return
 
     try:
-        print("Initialisiere Kamera...")
-        picam2 = Picamera2()
+        cam.stop()
+        print("Kamera gestoppt.")
+    except Exception:
+        pass
 
-        # 8 Bit Farbkanal, BGR da opencv default BGR erwartet
-        cameraConfig = picam2.create_still_configuration(
-            main={"size": (IMAGE_WIDTH, IMAGE_HEIGHT),
-                  "format": "BGR888",},
-        )
-        picam2.configure(cameraConfig)
-        picam2.set_controls(CAMERA_CONTROLS)
 
-        print("Starte Kamera...")
-        picam2.start()
+def captureImageFromCamera():
+    # Standalone-Kompatibilität:
+    # Für direkte Tests des Cam-Moduls wird die Kamera hier weiterhin selbst
+    # gestartet, benutzt und danach wieder gestoppt.
+    cam = None
 
-        print(f"Warte {STARTUP_WAIT_SECONDS:.1f} Sekunden...")
-        time.sleep(STARTUP_WAIT_SECONDS)
-
-        print("Nehme Bild auf...")
-        imageBgr = picam2.capture_array()
-
-        grayImage = cv2.cvtColor(imageBgr, cv2.COLOR_BGR2GRAY)
-        overexposedPixels = np.sum(grayImage >= 250)
-        totalPixels = grayImage.shape[0] * grayImage.shape[1]
-        overexposedRatio = overexposedPixels / totalPixels
-
-        print(f"Ueberbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
-
-        return imageBgr
+    try:
+        cam = initCamera()
+        return captureImageFromInitializedCamera(cam)
 
     finally:
-        if picam2 is not None:
-            try:
-                picam2.stop()
-                print("Kamera gestoppt.")
-            except Exception:
-                pass
-
+        stopCamera(cam)
 
 def loadImageFromFile():
     inputPath = Path(INPUT_IMAGE_PATH)
@@ -495,8 +548,11 @@ def loadImageFromFile():
     return imageBgr
 
 
-def getInputImage():
+def getInputImage(cam=None):
     if IMAGE_SOURCE == "camera":
+        if cam is not None:
+            return captureImageFromInitializedCamera(cam)
+
         if isPiCameraAvailable():
             return captureImageFromCamera()
 
@@ -507,7 +563,6 @@ def getInputImage():
         return loadImageFromFile()
 
     raise ValueError('IMAGE_SOURCE muss "camera" oder "file" sein.')
-
 
 # ============================================================
 # ARUCO / A4-ERKENNUNG MIT OFFSET
@@ -1673,17 +1728,15 @@ def printConsolePartsInfo(detectedParts):
 # HAUPTPROGRAMM
 # ============================================================
 
-def main():
+def main(cam=None):
     try:
         # Bewusst am Anfang. Der Solver sieht innerhalb eines runs niemals zu keinem Zeitpunkt etwas,
         # das nicht explizit innerhalb des aktuellen runs abgesegnet wurde.
         clearAlgoInputFolder()
         print(f"Algorithmus-Input-Ordner geleert: {DESTINATION_TO_ALGO_INPUT_FOLDER}")
-
         clearDebugOutputFolder()
         print(f"Debug-Output-Ordner geleert: {OUTPUT_DIR}")
-
-        imageBgr = getInputImage()
+        imageBgr = getInputImage(cam)
         imageBgr = rotateImageIfNeeded(imageBgr)
 
         if SAVE_DEBUG_FILES:

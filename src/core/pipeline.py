@@ -7,7 +7,7 @@ Haupt-Pipeline orchestriert alle Schritte
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from time import time
+from time import time, sleep
 from typing import Optional
 
 import cv2
@@ -26,7 +26,7 @@ from ..solver.validation.scorer import PlacementScorer
 from ..ui.simulator.guess_renderer import GuessRenderer
 from ..utils.logger import setup_logger
 from ..vision.camera_loader import CameraLoader
-from ..vision.cam_module import main as CameraProcess
+from ..vision.cam_module import (main as runCameraModule, initCamera, stopCamera)
 from ..vision.mock_puzzle_creator import MockPuzzleGenerator
 from .config import Config
 
@@ -90,9 +90,10 @@ class PuzzlePipeline:
         """Fuehrt die komplette Pipeline aus"""
         self.logger.info("Pipeline gestartet...")
         start_time = time()
+        cam = None
 
         try:
-            #insert cam_init here
+            cam = initCamera()
             if self.config.hardware.enabled:
                 from src.hardware.motion_control.MotionControlCommunication import (
                     wait_for_robot_start,
@@ -116,8 +117,9 @@ class PuzzlePipeline:
 
             # Phase 0.5: Bildaufnahme
             self.logger.info("Phase 0.5: Bildaufnahme")
+
             _camera_start = time()
-            CameraProcess()
+            runCameraModule(cam)
             _time_camera = time() - _camera_start
             self.logger.info(f"Kameramodul abgeschossen {_time_camera:.1f}s")
 
@@ -178,6 +180,8 @@ class PuzzlePipeline:
             return PipelineResult(
                 success=False, duration=time() - start_time, message=f"Fehler: {str(e)}"
             )
+        finally:
+            stopCamera(cam)
 
     def _process_vision(self):
         """Bildverarbeitung - load and analyze puzzle pieces"""
