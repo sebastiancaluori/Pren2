@@ -99,3 +99,9 @@ sudo systemctl status puzzlesolver.service
 # Live-Logs anzeigen
 journalctl -u puzzlesolver.service -f
 ```
+
+### 4. Restart Service
+
+```bash
+sudo systemctl restart puzzlesolver.service
+```
