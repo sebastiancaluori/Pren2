@@ -250,7 +250,7 @@ FILL_CONTOUR_HOLES = True
 # Zusätzlicher Rand um ausgeschnittene Teile in Pixeln. Grösser = mehr Umgebung im Crop.
 CROP_PADDING_PX = 0
 # Erlaubte Anzahl Teile. Gültig ist nur 4 oder 6.
-EXPECTED_PART_COUNT = [4, 6]
+EXPECTED_PART_COUNT = [4, 5, 6]
 # Hintergrundwert für Cutouts. 255 = weiss, 0 = schwarz.
 CUTOUT_BACKGROUND_VALUE = 255
 
