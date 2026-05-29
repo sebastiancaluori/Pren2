@@ -95,14 +95,8 @@ class GuessGenerator:
         # Generate positions
         all_positions = self.generate_grid_positions(target, grid_spacing=50)
         
-        print(f"Generated {len(all_positions)} grid positions focused on target")
-        
-        # Get rotations with specified step
         rotations = list(range(0, 360, rotation_step))
         piece_ids = list(range(num_pieces))
-        
-        print(f"Rotations: {len(rotations)} (every {rotation_step}°)")
-        print(f"Pieces: {num_pieces}")
 
         all_guesses = []
         
@@ -139,9 +133,7 @@ class GuessGenerator:
                     
                     # Limit total guesses
                     if len(all_guesses) >= max_guesses:
-                        print(f"Reached max guesses limit: {max_guesses}")
                         return all_guesses
-        
-        print(f"Generated {len(all_guesses)} total guesses")
+
         return all_guesses
     

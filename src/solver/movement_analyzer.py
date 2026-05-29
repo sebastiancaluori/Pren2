@@ -88,25 +88,17 @@ class MovementAnalyzer:
         pixels_per_mm = 2.0
         
         # Calculate source COMs (original positions)
+        # pick_pose.x/y is already the centroid from parts.json — use it directly
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
-            
+
             if piece_id in piece_shapes:
-                source_com = MovementAnalyzer.calculate_piece_com(
-                    piece_shapes[piece_id],
-                    piece.pick_pose.x,
-                    piece.pick_pose.y,
-                    piece.pick_pose.theta
+                global_source_com = (
+                    piece.pick_pose.x + source_offset_x,
+                    piece.pick_pose.y + source_offset_y
                 )
-                
-                if source_com:
-                    # Convert to global coordinates
-                    global_source_com = (
-                        source_com[0] + source_offset_x,
-                        source_com[1] + source_offset_y
-                    )
-                    source_coms[piece_id] = global_source_com
-                    print(f"  Source P{piece_id}: COM at {global_source_com}")
+                source_coms[piece_id] = global_source_com
+                print(f"  Source P{piece_id}: COM at {global_source_com}")
         
         # Calculate target COMs (best solution positions)
         for placement in best_guess:

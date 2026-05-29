@@ -26,23 +26,33 @@ class GuessRenderer:
         Returns grayscale for scoring.
         Now uses TOP-LEFT corner positioning instead of center.
         """
-        canvas = np.zeros((self.height, self.width), dtype=np.float32)
-        
+        canvas = np.zeros((self.height, self.width), dtype=np.uint8)
+
         for placement in guess:
             piece_id = placement['piece_id']
             x = int(placement['x'])  # Now this is TOP-LEFT x
             y = int(placement['y'])  # Now this is TOP-LEFT y
             theta = placement['theta']
-            
+
             if piece_id in piece_shapes:
                 shape = piece_shapes[piece_id]
-                
+
                 # Rotate shape
                 rotated = self._rotate_shape(shape, theta)
-                
+
                 # Place on canvas using top-left positioning
-                self._place_shape(canvas, rotated, x, y, value=1.0)
-        
+                self._place_shape(canvas, rotated, x, y, value=1)
+
+        return canvas
+
+    def render_static(self, placements: List[dict], piece_shapes: Dict[int, np.ndarray]) -> np.ndarray:
+        """Render a fixed set of placements into a uint8 canvas for use as a static background."""
+        return self.render(placements, piece_shapes)
+
+    def render_on_base(self, base: np.ndarray, rotated_shape: np.ndarray, x: int, y: int) -> np.ndarray:
+        """Stamp a pre-rotated shape onto a copy of base. Used for incremental scoring."""
+        canvas = base.copy()
+        self._place_shape(canvas, rotated_shape, x, y, value=1)
         return canvas
 
     def render_color(self, guess: List[dict], piece_shapes: Dict[int, np.ndarray]) -> np.ndarray:

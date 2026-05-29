@@ -57,12 +57,7 @@ class FineTuner:
 
         initial_rendered = self.renderer.render(placements, piece_shapes)
         initial_score = self.scorer.score(initial_rendered, target)
-        print(f"\n  [FineTuner] Start-Score: {initial_score:.1f}")
-        print(
-            f"  [FineTuner] Suchraum: xy ±{self.xy_range}px (Schritt {self.xy_step}), "
-            f"theta ±{self.theta_range}° (Schritt {self.theta_step}°), "
-            f"max {self.max_passes} Durchlaeufe"
-        )
+        print(f"  [FineTuner] start={initial_score:.0f}")
 
         for pass_idx in range(self.max_passes):
             improved = False
@@ -81,16 +76,14 @@ class FineTuner:
                         all_guesses.append(_to_coarse(placements, coarse_ratio))
 
             if not improved:
-                print(f"  [FineTuner] Konvergiert nach {pass_idx + 1} Durchlaeufen")
+                print(f"  [FineTuner] converged after {pass_idx + 1} passes")
                 break
         else:
-            print(f"  [FineTuner] {self.max_passes} Durchlaeufe abgeschlossen")
+            print(f"  [FineTuner] max passes reached ({self.max_passes})")
 
         final_rendered = self.renderer.render(placements, piece_shapes)
         final_score = self.scorer.score(final_rendered, target)
-        print(
-            f"  [FineTuner] End-Score: {final_score:.1f}  (Δ {final_score - initial_score:+.1f})"
-        )
+        print(f"  [FineTuner] end={final_score:.0f} (Δ{final_score - initial_score:+.0f})")
         return placements, final_score
 
     def _optimize_piece(self, piece_idx, placements, piece_shapes, target):

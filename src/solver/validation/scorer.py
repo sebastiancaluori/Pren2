@@ -6,7 +6,7 @@ class PlacementScorer:
                  gap_penalty: float = 0.5,
                  weight_multiplier: float = 1.0):
         # weight_multiplier skaliert die Per-Pixel-Gewichte (typisch 1/scale^2),
-        # sodass der score_threshold unabhaengig von der Aufloesung bleibt.
+        # sodass der score_max unabhaengig von der Aufloesung bleibt.
         self.overlap_penalty = overlap_penalty * weight_multiplier
         self.coverage_reward = coverage_reward * weight_multiplier
         self.gap_penalty = gap_penalty * weight_multiplier

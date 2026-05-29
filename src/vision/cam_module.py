@@ -1,6 +1,5 @@
 # cam_module.py
 
-# tbd Logik einbauen falls keine passende Teileanzahl bzw Fläche erkannt wurde.
 # tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
 
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
@@ -13,6 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
 try:
     from picamera2 import Picamera2
 except (ImportError, ModuleNotFoundError):
@@ -31,14 +31,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]  # src/vision/cam_module.py -
 DESTINATION_TO_ALGO_INPUT_FOLDER = PROJECT_ROOT / "input"
 
 # Eingabebild, falls IMAGE_SOURCE = "file" oder keine Pi Camera vorhanden ist.
-INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
+INPUT_IMAGE_PATH = PROJECT_ROOT / "src" / "vision" / "1.png"
 
 # Name der JSON-Datei, welche der Solver später einliest.
 ALGO_INPUT_JSON_FILENAME = "parts.json"
 # Präfix für die Teilmasken im Algorithmus-Input. Beispiel: piece_0.png.
 ALGO_INPUT_MASK_PREFIX = "piece_"
-# True = Input-Ordner vor jedem Lauf leeren, damit keine alten Masken übrig bleiben.
-CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
+# Der Input-Ordner wird bei jedem Start des Cam-Moduls geleert.
+# Neue Algorithmus-Dateien werden nur nach gültiger Erkennung geschrieben.
 
 
 # ============================================================
@@ -53,18 +53,31 @@ IMAGE_SOURCE = "camera"
 IMAGE_WIDTH = 4608
 # Aufnahmehöhe der Pi Camera. Muss zur gewünschten Kameraauflösung passen.
 IMAGE_HEIGHT = 2592
-# Wartezeit nach Kamerastart. Grösser = stabilere Belichtung/Weissabgleich, aber langsamer.
+
+
 STARTUP_WAIT_SECONDS = 3.0
 
 # Bild um 90 Grad im Uhrzeigersinn drehen, falls die Kamera mechanisch verdreht ist.
 ROTATE_90_CLOCKWISE = False
 # Bild um 180 Grad drehen. Nie gleichzeitig mit ROTATE_90_CLOCKWISE aktivieren.
 ROTATE_180 = False
-
+# Initial Kameraeinstellungen für den Start innerhalb der Pipeline
+INIT_CAMERA_CONTROLS_FOR_PIPELINE = {
+    # Automatische Belichtung. False = manueller ExposureTime-Wert wird verwendet.
+    "AeEnable": False,
+    # Automatischer Weissabgleich. False = ColourGains unten werden verwendet.
+    "AwbEnable": False,
+    # Belichtungszeit in Mikrosekunden. Höher = heller, zu hoch = A4 kann ausbrennen.
+    "ExposureTime": 6000,  # Mikrosekunden
+    # Analoge Verstärkung. Höher = heller, aber mehr Bildrauschen.
+    "AnalogueGain": 1.0,
+    # Rot-/Blau-Verstärkung für Weissabgleich. Höherer Wert = jeweiliger Farbkanal stärker.
+    "ColourGains": (1.5, 1.5),
+}
 # Manuelle Kameraeinstellungen für Tests gegen Überbelichtung.
 # Ohne Unterbeleuchtung, Kunstlicht, exposureTime rund 8000
 # Mit Unterbeleuchtung, Kunstlicht 6000
-CAMERA_CONTROLS = {
+CAMERA_CONTROLS_FOR_INTERNAL_USE = {
     # Automatische Belichtung. False = manueller ExposureTime-Wert wird verwendet.
     "AeEnable": False,
     # Automatischer Weissabgleich. False = ColourGains unten werden verwendet.
@@ -84,13 +97,8 @@ CAMERA_CONTROLS = {
 
 # Hauptordner für Debug-Ausgaben der Vision-Pipeline.
 OUTPUT_DIR = PROJECT_ROOT / "src" / "vision" / "output"
-# Speichert ausgeschnittene Teile als Debug-Bilder.
+# Speichert Kopien der finalen Algorithmus-Teilemasken für Debug-Zwecke.
 OUTPUT_PARTS_DIR = OUTPUT_DIR / "parts"
-# Speichert die einzelnen Teilmasken für die Kontrolle.
-OUTPUT_PART_MASKS_DIR = OUTPUT_DIR / "part_masks"
-# Speichert Teil-Cutouts: Teil sichtbar, Hintergrund weiss.
-OUTPUT_PART_CUTOUTS_DIR = OUTPUT_DIR / "part_cutouts"
-
 # Namenspräfix für alle Debug-Dateien dieses Laufs.
 RUN_NAME = "debug_"
 
@@ -109,22 +117,9 @@ OUTPUT_JSON_FILENAME = f"{RUN_NAME}_parts.json"
 # Speichert die Homographie-Matrix Bild -> entzerrtes A4 als NumPy-Datei.
 OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
-# True = Debug-Fenster anzeigen. Auf dem Raspi/headless normalerweise False lassen.
-DEBUG_SHOW_IMAGES = False
-# Anzeigedauer der Debug-Fenster in Millisekunden.
-DEBUG_WAIT_MS = 1000
-
-# Fenstername für das Rohbild, falls DEBUG_SHOW_IMAGES = True.
-INPUT_WINDOW_NAME = "Input Image"
-# Fenstername für das A4-/ArUco-Debug-Bild.
-DEBUG_WINDOW_NAME = "A4 Corner Debug Image"
-# Fenstername für das entzerrte A4-Bild.
-WARP_WINDOW_NAME = "Warped A4 Image"
-# Fenstername für die Teile-Maske.
-MASK_WINDOW_NAME = "Parts Mask"
-# Fenstername für das finale Teile-Debug-Bild.
-PARTS_DEBUG_WINDOW_NAME = "Parts Debug"
-
+# False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
+# True = Zusätzlich Debug-Dateien in src/vision/output speichern.
+SAVE_DEBUG_FILES = False
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -141,7 +136,10 @@ A4_WIDTH_MM = 297.0
 # Höhe der A4-Fläche im Querformat in mm.
 A4_HEIGHT_MM = 210.0
 # Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
-PX_PER_MM = 10.0
+# Interne Auflösung mit der das Cam Modul arbeitet, so hoch wie möglich bzw sinnvoll
+WORKING_INTERNAL_PX_PER_MM = 6.0
+# Auflösung der Bilder die der Algorithmus erhält, so tief wie nötig
+ALGO_INPUT_PX_PER_MM = 3.0
 
 
 # Diese Punkte sind die gemessenen Referenzpunkte im Bild.
@@ -261,10 +259,10 @@ CUTOUT_BACKGROUND_VALUE = 255
 
 # PREN-Puzzle ohne Rahmen: 18.9 x 12.6 cm
 # Erwartete Gesamtfläche aller Puzzleteile in mm2.
-# 20879 Fläche des 6 Teile Puzzles von Silvan
+# 20879 mm: Oberfläche des 6 Teile Puzzles von Silvan
 EXPECTED_TOTAL_PART_AREA_MM2 = 20879
-# Erlaubte Flächenabweichung. 0.01 = ±1 %.
-MAX_TOTAL_AREA_ERROR_RATIO = 0.01
+# Erlaubte Flächenabweichung. 0.03 = +-3 %.
+MAX_TOTAL_AREA_ERROR_RATIO = 0.03
 
 
 # ============================================================
@@ -393,10 +391,9 @@ def savePngImage(path, image):
 
 
 def clearAlgoInputFolder():
+    # Leert den Algorithmus-Input-Ordner vollständig.
+    # Der Ordner selbst bleibt bestehen.
     algoInputDirPath = buildDirPath(DESTINATION_TO_ALGO_INPUT_FOLDER)
-
-    if not CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE:
-        return algoInputDirPath
 
     for path in algoInputDirPath.iterdir():
         if path.is_file():
@@ -406,17 +403,22 @@ def clearAlgoInputFolder():
 
     return algoInputDirPath
 
+def clearDebugOutputFolder():
+    # Leert den Output-Ordner vollständig.
+    # Der Ordner selbst bleibt bestehen.
+    outputDirPath = buildDirPath(OUTPUT_DIR)
 
-def showImage(windowName, image, waitMs):
-    cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
-    cv2.imshow(windowName, image)
-    cv2.waitKey(waitMs)
-    cv2.destroyWindow(windowName)
+    for path in outputDirPath.iterdir():
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+
+    return outputDirPath
 
 
-def showDebugImage(windowName, image):
-    if DEBUG_SHOW_IMAGES:
-        showImage(windowName, image, DEBUG_WAIT_MS)
+
+
 
 
 def rotateImageIfNeeded(imageBgr):
@@ -436,49 +438,104 @@ def rotateImageIfNeeded(imageBgr):
 # BILDEINGABE
 # ============================================================
 
+def initCameraIfAvailable():
+    if not isPiCameraAvailable():
+        return None
+    return initCamera()
+
 def isPiCameraAvailable():
     return Picamera2 is not None
 
 
-def captureImageFromCamera():
-    picam2 = None
+def initCamera():
+    # Erstellt, konfiguriert und startet die Pi Camera.
+    # Rückgabe ist eine gestartete Kamera, die später an captureImageFromInitializedCamera(cam)
+    # übergeben werden kann.
+    if Picamera2 is None:
+        raise RuntimeError("Picamera2 ist auf dieser Maschine nicht verfügbar.")
+
+    print("Initialisiere Kamera...")
+    cam = Picamera2()
+
+    # BGR888 = 8 Bit pro Farbkanal, Reihenfolge Blue/Green/Red.
+    # Passt direkt zu OpenCV, da OpenCV standardmässig BGR erwartet.
+    cameraConfig = cam.create_still_configuration(
+        main={
+            "size": (IMAGE_WIDTH, IMAGE_HEIGHT),
+            "format": "BGR888",
+        },
+    )
+
+    cam.configure(cameraConfig)
+    cam.set_controls(INIT_CAMERA_CONTROLS_FOR_PIPELINE)
+
+    print("Starte Kamera...")
+    cam.start()
+    cam._started_at = time.monotonic()
+
+    return cam
+
+
+def captureImageFromInitializedCamera(cam, controls=None, waitSecondsBetweeCapture=0.0):
+    # Nimmt ein Bild mit einer bereits gestarteten Kamera auf.
+    # Hier wird die Kamera nicht neu initialisiert und nicht gestoppt.
+    if cam is None:
+        # Platzhalter falls cam aus irgendeinem Grunde nicht bereit
+        print("!!!!Keine Kamera gefunden obwohl sie vorhanden sein müsste")
+        time.sleep(3)
+        print("mache jetzt ohne Prüfung weiter")
+
+    startedAt = getattr(cam, "_started_at", None)
+
+    if STARTUP_WAIT_SECONDS > 0 and startedAt is not None:
+        elapsedSeconds = time.monotonic() - startedAt
+        remainingSeconds = STARTUP_WAIT_SECONDS - elapsedSeconds
+
+        if remainingSeconds > 0:
+            print(
+                f"Kamera läuft erst seit {elapsedSeconds:.1f} Sekunden, "
+                f"warte noch {remainingSeconds:.1f} Sekunden..."
+            )
+            time.sleep(remainingSeconds)
+
+    print("Nehme Bild auf...")
+    imageBgr = cam.capture_array()
+
+    grayImage = cv2.cvtColor(imageBgr, cv2.COLOR_BGR2GRAY)
+    overexposedPixels = np.sum(grayImage >= 250)
+    totalPixels = grayImage.shape[0] * grayImage.shape[1]
+    overexposedRatio = overexposedPixels / totalPixels
+
+    print(f"überbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
+
+    return imageBgr
+
+
+def stopCamera(cam):
+    # Stoppt eine gestartete Kamera.
+    # Die Funktion ist absichtlich tolerant, damit Cleanup im finally-Block der pipeline.py robust bleibt.
+    if cam is None:
+        return
 
     try:
-        print("Initialisiere Kamera...")
-        picam2 = Picamera2()
+        cam.stop()
+        print("Kamera gestoppt.")
+    except Exception:
+        pass
 
-        cameraConfig = picam2.create_still_configuration(
-            main={"size": (IMAGE_WIDTH, IMAGE_HEIGHT)}
-        )
-        picam2.configure(cameraConfig)
-        picam2.set_controls(CAMERA_CONTROLS)
 
-        print("Starte Kamera...")
-        picam2.start()
+def captureImageFromCamera():
+    # Standalone-Kompatibilität:
+    # Für direkte Tests des Cam-Moduls wird die Kamera hier weiterhin selbst
+    # gestartet, benutzt und danach wieder gestoppt.
+    cam = None
 
-        print(f"Warte {STARTUP_WAIT_SECONDS:.1f} Sekunden...")
-        time.sleep(STARTUP_WAIT_SECONDS)
-
-        print("Nehme Bild auf...")
-        imageBgr = picam2.capture_array()
-
-        grayImage = cv2.cvtColor(imageBgr, cv2.COLOR_BGR2GRAY)
-        overexposedPixels = np.sum(grayImage >= 250)
-        totalPixels = grayImage.shape[0] * grayImage.shape[1]
-        overexposedRatio = overexposedPixels / totalPixels
-
-        print(f"Ueberbelichtete Pixel: {overexposedRatio * 100.0:.2f} %")
-
-        return imageBgr
+    try:
+        cam = initCamera()
+        return captureImageFromInitializedCamera(cam)
 
     finally:
-        if picam2 is not None:
-            try:
-                picam2.stop()
-                print("Kamera gestoppt.")
-            except Exception:
-                pass
-
+        stopCamera(cam)
 
 def loadImageFromFile():
     inputPath = Path(INPUT_IMAGE_PATH)
@@ -496,8 +553,11 @@ def loadImageFromFile():
     return imageBgr
 
 
-def getInputImage():
+def getInputImage(cam=None):
     if IMAGE_SOURCE == "camera":
+        if cam is not None:
+            return captureImageFromInitializedCamera(cam)
+
         if isPiCameraAvailable():
             return captureImageFromCamera()
 
@@ -508,7 +568,6 @@ def getInputImage():
         return loadImageFromFile()
 
     raise ValueError('IMAGE_SOURCE muss "camera" oder "file" sein.')
-
 
 # ============================================================
 # ARUCO / A4-ERKENNUNG MIT OFFSET
@@ -671,14 +730,42 @@ def extractA4Corners(detectedMarkers):
 
     return a4Corners, referenceCorners
 
+def calculate_native_a4_pixel_density(a4_corners_px):
+    top_left = np.asarray(a4_corners_px["top_left"], dtype=np.float32)
+    top_right = np.asarray(a4_corners_px["top_right"], dtype=np.float32)
+    bottom_right = np.asarray(a4_corners_px["bottom_right"], dtype=np.float32)
+    bottom_left = np.asarray(a4_corners_px["bottom_left"], dtype=np.float32)
 
+    # Zwei Breiten messen: obere und untere A4-Kante.
+    width_top_px = np.linalg.norm(top_right - top_left)
+    width_bottom_px = np.linalg.norm(bottom_right - bottom_left)
+
+    # Zwei Höhen messen: linke und rechte A4-Kante.
+    height_left_px = np.linalg.norm(top_left - bottom_left)
+    height_right_px = np.linalg.norm(top_right - bottom_right)
+
+    # Mittelwert ist robuster, falls Kamera/A4 leicht schräg stehen.
+    measured_width_px = (width_top_px + width_bottom_px) / 2.0
+    measured_height_px = (height_left_px + height_right_px) / 2.0
+
+    native_px_per_mm_x = measured_width_px / A4_WIDTH_MM
+    native_px_per_mm_y = measured_height_px / A4_HEIGHT_MM
+    native_px_per_mm_avg = (native_px_per_mm_x + native_px_per_mm_y) / 2.0
+
+    return {
+        "native_px_per_mm_x": float(native_px_per_mm_x),
+        "native_px_per_mm_y": float(native_px_per_mm_y),
+        "native_px_per_mm_avg": float(native_px_per_mm_avg),
+        "measured_width_px": float(measured_width_px),
+        "measured_height_px": float(measured_height_px),
+    }
 # ============================================================
 # HOMOGRAPHIE / KOORDINATEN
 # ============================================================
 
 def getWarpSizePx():
-    warpWidthPx = int(round(A4_WIDTH_MM * PX_PER_MM))
-    warpHeightPx = int(round(A4_HEIGHT_MM * PX_PER_MM))
+    warpWidthPx = int(round(A4_WIDTH_MM * WORKING_INTERNAL_PX_PER_MM))
+    warpHeightPx = int(round(A4_HEIGHT_MM * WORKING_INTERNAL_PX_PER_MM))
     return warpWidthPx, warpHeightPx
 
 
@@ -735,7 +822,19 @@ def warpPxToOutputPxTopRight(xPx, yPx):
 
 
 def outputPxToOutputMm(xPx, yPx):
-    return float(xPx) / PX_PER_MM, float(yPx) / PX_PER_MM
+    # Rechnet eine kontinuierliche Pixelkoordinate aus dem entzerrten A4-Bild
+    # in echte A4-Millimeter um.
+    # xPx/yPx sind keine diskreten Pixelnummern, sondern geometrische Koordinaten,
+    # Zbsp ein Schwerpunkt aus cv2.moments() liefert kontinuierliche! Bildkoordinaten
+    # Das Warp-Bild bildet die A4-Fläche von Pixelkoordinate 0 bis width-1
+    # bzw. height-1 ab. Diese Spanne entspricht exakt 0..A4_WIDTH_MM und
+    # 0..A4_HEIGHT_MM, also von einem Rand bis UND mit zum anderen Rand
+    warpWidthPx, warpHeightPx = getWarpSizePx()
+
+    xMm = float(xPx) * A4_WIDTH_MM / float(warpWidthPx - 1)
+    yMm = float(yPx) * A4_HEIGHT_MM / float(warpHeightPx - 1)
+
+    return xMm, yMm
 
 
 def buildCoordinateOriginDescription():
@@ -763,7 +862,7 @@ def applyIgnoreBorder(binaryMask):
     if IGNORE_BORDER_MM <= 0:
         return binaryMask
 
-    borderPx = int(round(IGNORE_BORDER_MM * PX_PER_MM))
+    borderPx = int(round(IGNORE_BORDER_MM * WORKING_INTERNAL_PX_PER_MM))
 
     if borderPx <= 0:
         return binaryMask
@@ -862,8 +961,8 @@ def findAllValidParts(binaryMask):
     # Konturen suchen und nur solche behalten, deren Fläche im erlaubten Bereich liegt.
     contours, _ = cv2.findContours(binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    minAreaPx = MIN_PART_AREA_MM2 * (PX_PER_MM ** 2)
-    maxAreaPx = MAX_PART_AREA_MM2 * (PX_PER_MM ** 2)
+    minAreaPx = MIN_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM ** 2)
+    maxAreaPx = MAX_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM ** 2)
 
     detectedParts = []
 
@@ -914,7 +1013,7 @@ def addDerivedPartValues(detectedParts):
             partInfo["centroidY"],
         )
         centroidXmm, centroidYmm = outputPxToOutputMm(centroidXpxOutput, centroidYpxOutput)
-        areaMm2 = partInfo["areaPx"] / (PX_PER_MM ** 2)
+        areaMm2 = partInfo["areaPx"] / (WORKING_INTERNAL_PX_PER_MM ** 2)
 
         partInfo["index"] = i + 1
         partInfo["partName"] = f"part_{i + 1:02d}"
@@ -1005,47 +1104,34 @@ def buildSinglePartMask(fullBinaryMask, contour, cropBounds):
     return singleMask[y1:y2, x1:x2].copy()
 
 
-def buildPartCutout(croppedImageBgr, croppedSingleMask):
-    # Erstellt ein Debug-Cutout: Teil bleibt sichtbar, alles andere wird weiss.
-    cutoutImageBgr = np.full_like(croppedImageBgr, CUTOUT_BACKGROUND_VALUE)
-    cutoutImageBgr[croppedSingleMask > 0] = croppedImageBgr[croppedSingleMask > 0]
 
-    return cutoutImageBgr
+def getAlgoInputScaleFactor():
+    return ALGO_INPUT_PX_PER_MM / WORKING_INTERNAL_PX_PER_MM
 
 
-def savePartOutputs(warpedImageBgr, binaryMask, detectedParts):
-    partsDirPath = buildDirPath(OUTPUT_PARTS_DIR)
-    partMasksDirPath = buildDirPath(OUTPUT_PART_MASKS_DIR)
-    partCutoutsDirPath = buildDirPath(OUTPUT_PART_CUTOUTS_DIR)
+def resizeMaskForAlgoInput(maskImage):
+    scaleFactor = getAlgoInputScaleFactor()
 
-    for partInfo in detectedParts:
-        croppedImageBgr, cropBounds = cropPartImage(
-            warpedImageBgr,
-            partInfo["bboxX"],
-            partInfo["bboxY"],
-            partInfo["bboxW"],
-            partInfo["bboxH"],
-        )
+    if scaleFactor == 1.0:
+        return maskImage
 
-        croppedSingleMask = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
-        cutoutImageBgr = buildPartCutout(croppedImageBgr, croppedSingleMask)
+    newWidth = max(1, int(round(maskImage.shape[1] * scaleFactor)))
+    newHeight = max(1, int(round(maskImage.shape[0] * scaleFactor)))
 
-        outputPartPath = partsDirPath / f"{partInfo['partName']}.png"
-        outputPartMaskPath = partMasksDirPath / f"{partInfo['partName']}_mask.png"
-        outputPartCutoutPath = partCutoutsDirPath / f"{partInfo['partName']}_cutout.png"
-
-        savePngImage(outputPartPath, croppedImageBgr)
-        savePngImage(outputPartMaskPath, croppedSingleMask)
-        savePngImage(outputPartCutoutPath, cutoutImageBgr)
-
-        partInfo["outputPath"] = str(outputPartPath)
-        partInfo["maskPath"] = str(outputPartMaskPath)
-        partInfo["cutoutPath"] = str(outputPartCutoutPath)
-
+    return cv2.resize(
+        maskImage,
+        (newWidth, newHeight),
+        interpolation=cv2.INTER_NEAREST,
+    )
 
 def saveAlgoInputFiles(binaryMask, detectedParts):
     # Speichert nur die Masken, welche der Algorithmus später als Input braucht.
-    algoInputDirPath = clearAlgoInputFolder()
+    # Der Input-Ordner wird bewusst nicht hier geleert, sondern einmal zentral
+    # am Anfang von main().
+    # Intern wird mit WORKING_INTERNAL_PX_PER_MM gearbeitet.
+    # Für den Algorithmus werden die Masken auf ALGO_INPUT_PX_PER_MM runterskaliert.
+    algoInputDirPath = buildDirPath(DESTINATION_TO_ALGO_INPUT_FOLDER)
+    debugPartsDirPath = buildDirPath(OUTPUT_PARTS_DIR) if SAVE_DEBUG_FILES else None
 
     for i, partInfo in enumerate(detectedParts):
         cropBounds = (
@@ -1054,16 +1140,29 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
             partInfo["bboxX"] + partInfo["bboxW"],
             partInfo["bboxY"] + partInfo["bboxH"],
         )
-
-        croppedSingleMask = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
+        croppedSingleMaskInternal = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
+        croppedSingleMaskAlgo = resizeMaskForAlgoInput(croppedSingleMaskInternal)
 
         algoMaskFilename = f"{ALGO_INPUT_MASK_PREFIX}{i}.png"
         algoMaskPath = algoInputDirPath / algoMaskFilename
 
-        savePngImage(algoMaskPath, croppedSingleMask)
+        savePngImage(algoMaskPath, croppedSingleMaskAlgo)
 
         partInfo["algoInputMaskFilename"] = algoMaskFilename
         partInfo["algoInputMaskPath"] = str(algoMaskPath)
+
+        if debugPartsDirPath is not None:
+            debugMaskPath = debugPartsDirPath / algoMaskFilename
+            shutil.copy2(algoMaskPath, debugMaskPath)
+            partInfo["debugAlgoInputMaskPath"] = str(debugMaskPath)
+
+        # Schwerpunkt in Pixeln passend zur Algorithmus-Skalierung.
+        # Die mm-Werte bleiben die Wahrheit; daraus werden die Algo-Pixel berechnet.
+        partInfo["algoInputCentroidXpx"] = float(partInfo["centroidXmm"] * ALGO_INPUT_PX_PER_MM)
+        partInfo["algoInputCentroidYpx"] = float(partInfo["centroidYmm"] * ALGO_INPUT_PX_PER_MM)
+
+        partInfo["algoInputMaskWidthPx"] = int(croppedSingleMaskAlgo.shape[1])
+        partInfo["algoInputMaskHeightPx"] = int(croppedSingleMaskAlgo.shape[0])
 
     return algoInputDirPath
 
@@ -1072,6 +1171,11 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
 # JSON-EXPORT
 # ============================================================
 
+
+# Die Json fungiert als Schnittstelle zwischen cam_modul und dem Solver.
+# Dh: Der Konsistenz wegen sollten einmal eingetragene Keys ohne Absprache weder umbenannt noch gelöscht werden
+# Ergänzungen sind aber möglich, idealerweise in buildAlgoInputJsonData() da die ganze Json Generierung ein Kandidat
+# für Refactoring ist ( div Funktionen inkl. debug Infos in buildAlgoInputJsonData() integrieren bzw sammeln)
 def buildGeometryJsonData():
     # JSON-Hilfsdaten zur Geometrie. JSON-Key-Namen bleiben bewusst stabil.
     return {
@@ -1080,7 +1184,8 @@ def buildGeometryJsonData():
             "height": A4_HEIGHT_MM,
             "area_mm2": round(A4_WIDTH_MM * A4_HEIGHT_MM, 6),
         },
-        "px_per_mm": PX_PER_MM,
+        "px_per_mm": ALGO_INPUT_PX_PER_MM,
+        "working_internal_px_per_mm": WORKING_INTERNAL_PX_PER_MM,
         "coordinate_system": {
             "origin": COORDINATE_ORIGIN,
             "description": buildCoordinateOriginDescription(),
@@ -1101,6 +1206,17 @@ def buildPartsJsonList(detectedParts, includePaths):
     partsJson = []
 
     for partInfo in detectedParts:
+        if includePaths:
+            centroidPx = {
+                "x": round(partInfo["centroidXpx"], 6),
+                "y": round(partInfo["centroidYpx"], 6),
+            }
+        else:
+            centroidPx = {
+                "x": round(partInfo["algoInputCentroidXpx"], 6),
+                "y": round(partInfo["algoInputCentroidYpx"], 6),
+            }
+
         partData = {
             "index": partInfo["index"],
             "part_name": partInfo["partName"],
@@ -1108,26 +1224,21 @@ def buildPartsJsonList(detectedParts, includePaths):
                 "x": round(partInfo["centroidXmm"], 6),
                 "y": round(partInfo["centroidYmm"], 6),
             },
-            "centroid_px": {
-                "x": round(partInfo["centroidXpx"], 6),
-                "y": round(partInfo["centroidYpx"], 6),
-            },
+            "centroid_px": centroidPx,
             "area_mm2": round(partInfo["areaMm2"], 6),
-            "bounding_box_px": {
-                "x": partInfo["bboxX"],
-                "y": partInfo["bboxY"],
-                "w": partInfo["bboxW"],
-                "h": partInfo["bboxH"],
-            },
             "algo_input_mask_filename": partInfo.get("algoInputMaskFilename"),
         }
 
         if includePaths:
             partData.update({
-                "image_path": partInfo.get("outputPath"),
-                "mask_path": partInfo.get("maskPath"),
-                "cutout_path": partInfo.get("cutoutPath"),
+                "bounding_box_px": {
+                    "x": partInfo["bboxX"],
+                    "y": partInfo["bboxY"],
+                    "w": partInfo["bboxW"],
+                    "h": partInfo["bboxH"],
+                },
                 "algo_input_mask_path": partInfo.get("algoInputMaskPath"),
+                "debug_algo_input_mask_path": partInfo.get("debugAlgoInputMaskPath"),
             })
 
         partsJson.append(partData)
@@ -1177,7 +1288,8 @@ def buildAlgoInputJsonData(detectedParts, areaValidationData):
             "origin": COORDINATE_ORIGIN,
             "description": buildCoordinateOriginDescription(),
         },
-        "px_per_mm": PX_PER_MM,
+        "px_per_mm": ALGO_INPUT_PX_PER_MM,
+        "working_internal_px_per_mm": WORKING_INTERNAL_PX_PER_MM,
         "a4_size_mm": {
             "width": A4_WIDTH_MM,
             "height": A4_HEIGHT_MM,
@@ -1215,8 +1327,8 @@ def drawCoordinateGridDebug(debugImageBgr):
     imageHeight, imageWidth = debugImageBgr.shape[:2]
     overlay = debugImageBgr.copy()
 
-    gridSpacingPx = int(round(DEBUG_GRID_SPACING_MM * PX_PER_MM))
-    majorSpacingPx = int(round(DEBUG_GRID_MAJOR_SPACING_MM * PX_PER_MM))
+    gridSpacingPx = int(round(DEBUG_GRID_SPACING_MM * WORKING_INTERNAL_PX_PER_MM))
+    majorSpacingPx = int(round(DEBUG_GRID_MAJOR_SPACING_MM * WORKING_INTERNAL_PX_PER_MM))
 
     if gridSpacingPx <= 0:
         return debugImageBgr
@@ -1243,7 +1355,7 @@ def drawCoordinateGridDebug(debugImageBgr):
 
     debugImageBgr = cv2.addWeighted(overlay, DEBUG_GRID_ALPHA, debugImageBgr, 1.0 - DEBUG_GRID_ALPHA, 0)
 
-    axisLengthPx = int(round(DEBUG_AXIS_LENGTH_MM * PX_PER_MM))
+    axisLengthPx = int(round(DEBUG_AXIS_LENGTH_MM * WORKING_INTERNAL_PX_PER_MM))
     axisLengthPx = max(gridSpacingPx, axisLengthPx)
 
     origin = (imageWidth - 1, 0)
@@ -1533,7 +1645,7 @@ def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners):
 # KONSOLENAUSGABEN
 # ============================================================
 
-def printMarkerInfo(detectedMarkers):
+def printConsoleMarkerInfo(detectedMarkers):
     print()
     print("Erkannte Marker:")
 
@@ -1551,7 +1663,7 @@ def printMarkerInfo(detectedMarkers):
             print(f"  Ecke {cornerIndex}: x={x:.1f}, y={y:.1f}")
 
 
-def printCornerInfo(title, corners):
+def printConsoleCornerInfo(title, corners):
     print()
     print(title)
 
@@ -1561,7 +1673,7 @@ def printCornerInfo(title, corners):
         print(f"- {name}: x={x:.1f}, y={y:.1f}")
 
 
-def printGeometryInfo():
+def printConsoleGeometryInfo():
     frameWidthMm, frameHeightMm = getFrameSizeMm()
 
     print()
@@ -1574,14 +1686,14 @@ def printGeometryInfo():
     print(f"- Offset unten: {FRAME_OFFSET_BOTTOM_MM:.1f} mm")
 
 
-def printCoordinateSystemInfo():
+def printConsoleCoordinateSystemInfo():
     print()
     print("Koordinatensystem:")
     print(f"- Ursprung: {COORDINATE_ORIGIN}")
     print(f"- Beschreibung: {buildCoordinateOriginDescription()}")
 
 
-def printHomographyInfo(hImageToWarp):
+def printConsoleHomographyInfo(hImageToWarp):
     print()
     print("Homographie Bild -> Warp-Pixel:")
     print(hImageToWarp)
@@ -1590,10 +1702,10 @@ def printHomographyInfo(hImageToWarp):
 
     print()
     print(f"Warp-Groesse: {warpWidthPx} x {warpHeightPx} px")
-    print(f"PX_PER_MM: {PX_PER_MM}")
+    print(f"PX_PER_MM: {WORKING_INTERNAL_PX_PER_MM}")
 
 
-def printPartsInfo(detectedParts):
+def printConsolePartsInfo(detectedParts):
     print()
     print("Erkannte Teile:")
 
@@ -1608,9 +1720,8 @@ def printPartsInfo(detectedParts):
         print(f"  Schwerpunkt Warp-Pixel debug: x={partInfo['centroidX']:.3f}, y={partInfo['centroidY']:.3f}")
         print(f"  Flaeche: {partInfo['areaMm2']:.3f} mm2")
         print(f"  Bounding Box: x={partInfo['bboxX']}, y={partInfo['bboxY']}, w={partInfo['bboxW']}, h={partInfo['bboxH']}")
-        print(f"  Bild: {partInfo['outputPath']}")
-        print(f"  Maske: {partInfo['maskPath']}")
-        print(f"  Cutout: {partInfo['cutoutPath']}")
+        if SAVE_DEBUG_FILES:
+            print(f"  Debug-Kopie Algorithmus-Maske: {partInfo.get('debugAlgoInputMaskPath')}")
         print(f"  Algorithmus-Maske: {partInfo.get('algoInputMaskPath')}")
 
     print()
@@ -1622,93 +1733,112 @@ def printPartsInfo(detectedParts):
 # HAUPTPROGRAMM
 # ============================================================
 
-def main():
-    # Ablauf: Bild holen, Marker erkennen, A4 entzerren, Teile segmentieren,
-    # Debug-Dateien speichern und Algorithmus-Input schreiben.
-    outputImagePath = buildOutputPath(OUTPUT_IMAGE_FILENAME)
-    outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
-    outputWarpPath = buildOutputPath(OUTPUT_WARP_FILENAME)
-    outputMaskPath = buildOutputPath(OUTPUT_MASK_FILENAME)
-    outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
-    outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
-    outputHImageToWarpPath = buildOutputPath(OUTPUT_H_IMAGE_TO_WARP_PATH)
-
+def main(cam=None):
     try:
-        imageBgr = getInputImage()
+        # Bewusst am Anfang. Der Solver sieht innerhalb eines runs niemals zu keinem Zeitpunkt etwas,
+        # das nicht explizit innerhalb des aktuellen runs abgesegnet wurde.
+        clearAlgoInputFolder()
+        print(f"Algorithmus-Input-Ordner geleert: {DESTINATION_TO_ALGO_INPUT_FOLDER}")
+        clearDebugOutputFolder()
+        print(f"Debug-Output-Ordner geleert: {OUTPUT_DIR}")
+        imageBgr = getInputImage(cam)
         imageBgr = rotateImageIfNeeded(imageBgr)
 
-        savePngImage(outputImagePath, imageBgr)
+        if SAVE_DEBUG_FILES:
+            outputImagePath = buildOutputPath(OUTPUT_IMAGE_FILENAME)
+            savePngImage(outputImagePath, imageBgr)
+            print(f"Input-Bild gespeichert: {outputImagePath}")
 
-        print(f"Input-Bild gespeichert: {outputImagePath}")
-        print(f"Bildgroesse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
+        print(f"Bildgrösse: {imageBgr.shape[1]} x {imageBgr.shape[0]} Pixel")
         print(buildRotationStatusText())
-        printGeometryInfo()
-        printCoordinateSystemInfo()
-
-        showDebugImage(INPUT_WINDOW_NAME, imageBgr)
+        printConsoleGeometryInfo()
+        printConsoleCoordinateSystemInfo()
 
         detectedMarkers, rejectedCandidates = detectArucoMarkers(imageBgr)
-        printMarkerInfo(detectedMarkers)
+        printConsoleMarkerInfo(detectedMarkers)
 
         a4Corners, referenceCorners = extractA4Corners(detectedMarkers)
-        printCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
-        printCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
+        printConsoleCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
+        printConsoleCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
 
-        debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners)
-        savePngImage(outputDebugPath, debugImageBgr)
-        print(f"Debug-Bild gespeichert: {outputDebugPath}")
+        native_density = calculate_native_a4_pixel_density(a4Corners)
+        print("Native Pixeldichte der A4-Fläche:")
+        print(f"- x:   {native_density['native_px_per_mm_x']:.2f} px/mm")
+        print(f"- y:   {native_density['native_px_per_mm_y']:.2f} px/mm")
+        print(f"- avg: {native_density['native_px_per_mm_avg']:.2f} px/mm")
 
-        showDebugImage(DEBUG_WINDOW_NAME, debugImageBgr)
+        if SAVE_DEBUG_FILES:
+            outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
+            debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners)
+            savePngImage(outputDebugPath, debugImageBgr)
+            print(f"Debug-Bild gespeichert: {outputDebugPath}")
 
         hImageToWarp = computeHomographyImageToWarp(a4Corners)
-        printHomographyInfo(hImageToWarp)
+        printConsoleHomographyInfo(hImageToWarp)
 
-        np.save(str(outputHImageToWarpPath), hImageToWarp)
-        print(f"H gespeichert: {outputHImageToWarpPath}")
+        if SAVE_DEBUG_FILES:
+            outputHImageToWarpPath = buildOutputPath(OUTPUT_H_IMAGE_TO_WARP_PATH)
+            np.save(str(outputHImageToWarpPath), hImageToWarp)
+            print(f"H gespeichert: {outputHImageToWarpPath}")
 
         warpedImageBgr = warpImageToA4(imageBgr, hImageToWarp)
-        savePngImage(outputWarpPath, warpedImageBgr)
-        print(f"Warp-Bild gespeichert: {outputWarpPath}")
 
-        showDebugImage(WARP_WINDOW_NAME, warpedImageBgr)
+        if SAVE_DEBUG_FILES:
+            outputWarpPath = buildOutputPath(OUTPUT_WARP_FILENAME)
+            savePngImage(outputWarpPath, warpedImageBgr)
+            print(f"Warp-Bild gespeichert: {outputWarpPath}")
 
         binaryMask = buildPartsMask(warpedImageBgr)
-        savePngImage(outputMaskPath, binaryMask)
-        print(f"Maske gespeichert: {outputMaskPath}")
 
-        showDebugImage(MASK_WINDOW_NAME, binaryMask)
+        if SAVE_DEBUG_FILES:
+            outputMaskPath = buildOutputPath(OUTPUT_MASK_FILENAME)
+            savePngImage(outputMaskPath, binaryMask)
+            print(f"Maske gespeichert: {outputMaskPath}")
 
         detectedParts = findAllValidParts(binaryMask)
         detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
         addDerivedPartValues(detectedParts)
 
-        savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
-        algoInputDirPath = saveAlgoInputFiles(binaryMask, detectedParts)
-
-        partsDebugImageBgr = drawPartsDebug(warpedImageBgr, detectedParts)
-        savePngImage(outputPartsDebugPath, partsDebugImageBgr)
-        print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
-
-        showDebugImage(PARTS_DEBUG_WINDOW_NAME, partsDebugImageBgr)
-
         areaValidationData = buildAreaValidationData(detectedParts)
 
-        debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
-        saveJson(outputJsonPath, debugJsonData)
-        print(f"Debug-JSON gespeichert: {outputJsonPath}")
+        partCountIsValid = isExpectedPartCount(len(detectedParts))
+        areaIsValid = areaValidationData["is_valid"]
+        detectionIsValid = partCountIsValid and areaIsValid
 
-        algoJsonData = buildAlgoInputJsonData(detectedParts, areaValidationData)
-        algoJsonPath = algoInputDirPath / ALGO_INPUT_JSON_FILENAME
-        saveJson(algoJsonPath, algoJsonData)
-        print(f"Algorithmus-Input gespeichert: {algoInputDirPath}")
-
-        printPartsInfo(detectedParts)
         printAreaValidationInfo(areaValidationData)
+
+        if SAVE_DEBUG_FILES:
+            outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
+            partsDebugImageBgr = drawPartsDebug(warpedImageBgr, detectedParts)
+            savePngImage(outputPartsDebugPath, partsDebugImageBgr)
+            print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
+
+        if detectionIsValid:
+            algoInputDirPath = saveAlgoInputFiles(binaryMask, detectedParts)
+
+            algoJsonData = buildAlgoInputJsonData(detectedParts, areaValidationData)
+            algoJsonPath = algoInputDirPath / ALGO_INPUT_JSON_FILENAME
+            saveJson(algoJsonPath, algoJsonData)
+
+            print(f"Algorithmus-Input gespeichert: {algoInputDirPath}")
+        else:
+            print()
+            print("Algorithmus-Input wurde NICHT gespeichert.")
+            print("Der Input-Ordner bleibt leer, damit der Solver nicht mit alten Daten weiterläuft.")
+            print(f"- Teileanzahl gültig: {partCountIsValid}")
+            print(f"- Fläche gültig: {areaIsValid}")
+
+        printConsolePartsInfo(detectedParts)
+
+        if SAVE_DEBUG_FILES:
+            outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
+            debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
+            saveJson(outputJsonPath, debugJsonData)
+            print(f"Debug-JSON gespeichert: {outputJsonPath}")
 
     except Exception as e:
         print("Fehler:")
         print(e)
-
 
 if __name__ == "__main__":
     main()

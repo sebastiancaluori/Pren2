@@ -73,61 +73,43 @@ class PieceAnalyzer:
             total = sum(c.quality for c in piece.corners)
             return (total, len(piece.corners), best)
 
-        corner_pieces = [p for p in puzzle_pieces if p.piece_type == "corner"]
+        # Always re-evaluate using all pieces with corner data — not just pre-classified corners.
+        # This corrects misclassifications regardless of whether count is 4, >4, or <4.
+        all_with_corners = [p for p in puzzle_pieces if p.corners]
 
-        if len(corner_pieces) == 4:
-            print(f"  ✅ Corner count OK: {len(corner_pieces)} pieces")
-        elif len(corner_pieces) > 4:
-            print(f"  ⚠️  Too many corner pieces: {len(corner_pieces)} > 4")
-            print(f"      Re-evaluating based on corner quality scores...")
+        corner_scores = []
+        for piece in all_with_corners:
+            best_corner_quality = max(c.quality for c in piece.corners)
+            total_corner_quality = sum(c.quality for c in piece.corners)
+            best_edge_quality = max((e.quality for e in piece.edges), default=0.0)
+            # Penalize pieces where edge dominates over corners
+            corner_dominance = best_corner_quality - best_edge_quality
+            corner_scores.append((piece, best_corner_quality, total_corner_quality, len(piece.corners), corner_dominance))
 
-            corner_scores = []
-            for piece in corner_pieces:
-                if piece.corners:
-                    best_corner_quality = max(c.quality for c in piece.corners)
-                    total_corner_quality = sum(c.quality for c in piece.corners)
-                    corner_scores.append((piece, best_corner_quality, total_corner_quality, len(piece.corners)))
-                else:
-                    corner_scores.append((piece, 0.0, 0.0, 0))
+        corner_scores.sort(key=lambda x: (x[4], x[2], x[3], x[1]), reverse=True)
 
-            corner_scores.sort(key=lambda x: (x[2], x[3], x[1]), reverse=True)
+        print(f"      Corner piece rankings (all pieces with corner detections):")
+        for i, (piece, best_qual, total_qual, count, dominance) in enumerate(corner_scores):
+            print(f"        {i+1}. Piece {piece.id} ({piece.piece_type}): {count} corners, total_quality={total_qual:.2f}, best={best_qual:.2f}, dominance={dominance:.2f}")
 
-            print(f"      Corner piece rankings:")
-            for i, (piece, best_qual, total_qual, count) in enumerate(corner_scores):
-                print(f"        {i+1}. Piece {piece.id}: {count} corners, total_quality={total_qual:.2f}, best={best_qual:.2f}")
+        true_corners = corner_scores[:4]
+        demoted_pieces = corner_scores[4:]
 
-            true_corners = corner_scores[:4]
-            demoted_pieces = corner_scores[4:]
-
-            for piece, _, _, _ in demoted_pieces:
-                old_type = piece.piece_type
-                piece.piece_type = "edge"
-                print(f"        📉 Demoted piece {piece.id}: {old_type} → edge")
-
-            print(f"  ✅ Final corner pieces: {[int(p[0].id) for p in true_corners]}")
-        else:
-            # Fewer than 4 corners — look for misclassified pieces among edges/centers
-            needed = 4 - len(corner_pieces)
-            print(f"  ⚠️  Too few corner pieces: {len(corner_pieces)} < 4, need to promote {needed}")
-
-            non_corner_with_data = [
-                p for p in puzzle_pieces
-                if p.piece_type != "corner" and p.corners
-            ]
-            non_corner_with_data.sort(key=_corner_score, reverse=True)
-
-            print(f"      Candidates for promotion (non-corner pieces with corner data):")
-            for i, piece in enumerate(non_corner_with_data[:needed + 2]):
-                sc = _corner_score(piece)
-                print(f"        {i+1}. Piece {piece.id}: type={piece.piece_type}, total_quality={sc[0]:.2f}, best={sc[2]:.2f}")
-
-            for piece in non_corner_with_data[:needed]:
+        for piece, _, _, _, _ in true_corners:
+            if piece.piece_type != "corner":
                 old_type = piece.piece_type
                 piece.piece_type = "corner"
                 print(f"        📈 Promoted piece {piece.id}: {old_type} → corner")
 
-            final_corners = [p for p in puzzle_pieces if p.piece_type == "corner"]
-            print(f"  ✅ Final corner pieces: {[int(p.id) for p in final_corners]}")
+        for piece, _, _, _, _ in demoted_pieces:
+            if piece.piece_type == "corner":
+                piece.piece_type = "edge"
+                print(f"        📉 Demoted piece {piece.id}: corner → edge")
+
+        if len(all_with_corners) < 4:
+            print(f"  ⚠️  Only {len(all_with_corners)} pieces with corner detections — puzzle may not solve correctly")
+        else:
+            print(f"  ✅ Final corner pieces: {[int(p[0].id) for p in true_corners]}")
 
         # Final summary
         final_corners = [p for p in puzzle_pieces if p.piece_type == "corner"]
@@ -225,12 +207,22 @@ class PieceAnalyzer:
                 piece.piece_type = "edge"
                 piece.analysis_confidence = edge_data_list[0].quality
             elif (num_corners > 0 and num_edges > 0):
-                if corner_data_list[0].quality >= edge_data_list[0].quality:
+                best_corner = corner_data_list[0].quality
+                best_edge = edge_data_list[0].quality
+                corner_meets_thresh = best_corner >= corner_thresh
+                edge_meets_thresh = best_edge >= edge_thresh
+                if corner_meets_thresh and not edge_meets_thresh:
                     piece.piece_type = "corner"
-                    piece.analysis_confidence = corner_data_list[0].quality
+                    piece.analysis_confidence = best_corner
+                elif edge_meets_thresh and not corner_meets_thresh:
+                    piece.piece_type = "edge"
+                    piece.analysis_confidence = best_edge
+                elif best_corner >= best_edge:
+                    piece.piece_type = "corner"
+                    piece.analysis_confidence = best_corner
                 else:
                     piece.piece_type = "edge"
-                    piece.analysis_confidence = edge_data_list[0].quality
+                    piece.analysis_confidence = best_edge
             elif (num_corners > 0):
                 piece.piece_type = "corner"
                 piece.analysis_confidence = corner_data_list[0].quality

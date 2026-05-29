@@ -102,12 +102,16 @@ def detect_edges(
         if overall_quality < min_edge_score:
             continue
 
-        # Calculate rotations to align to each direction
+        # Use outward normal angle so rotations point the flat face outward, not just
+        # the edge vector — the edge vector alone is ambiguous (180° flip).
+        inward_normal_angle = float(np.degrees(np.arctan2(inward_normal[1], inward_normal[0]))) % 360
+        outward_normal_angle = (inward_normal_angle + 180) % 360
+
         rotations_to_align = {
-            "right": _calculate_rotation_to_align(edge_angle, 0),
-            "bottom": _calculate_rotation_to_align(edge_angle, 90),
-            "left": _calculate_rotation_to_align(edge_angle, 180),
-            "top": _calculate_rotation_to_align(edge_angle, 270),
+            "right":  _calculate_rotation_to_align(outward_normal_angle, 0),
+            "bottom": _calculate_rotation_to_align(outward_normal_angle, 90),
+            "left":   _calculate_rotation_to_align(outward_normal_angle, 180),
+            "top":    _calculate_rotation_to_align(outward_normal_angle, 270),
         }
 
         edge_data = EdgeData(

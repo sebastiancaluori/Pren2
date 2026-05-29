@@ -42,3 +42,66 @@ chmod +x build.sh
 ```
 
 The executable will be created in `dist/PREN-Puzzle-Solver/PREN-Puzzle-Solver`
+
+
+## Raspberry Pi Service Setup 
+
+### 1. Service-Datei erstellen
+Erstelle eine neue Konfigurationsdatei auf dem Raspberry Pi:
+
+```bash
+sudo vi /etc/systemd/system/puzzlesolver.service
+```
+
+#### Inhalt
+
+```toml
+[Unit]
+Description=PREN Puzzle Solver Service
+# Wartet, bis das Netzwerk und das System bereit sind
+After=network.target multi-user.target
+
+[Service]
+# Der Benutzer, unter dem das Skript ausgeführt wird
+User=pren
+# Das Arbeitsverzeichnis deines Repositories
+WorkingDirectory=/home/pren/pren2/pren-puzzle-solver
+
+
+# Startbefehl (nutzt Python aus der virtuellen Umgebung)
+ExecStart=/home/pren/pren2/pren-puzzle-solver/venv/bin/python /home/pren/pren2/pren-puzzle-solver/main.py
+
+# Dauer-Loop: Startet das Programm bei jeder Beendigung neu (Fehler & normaler Exit)
+Restart=always
+# Wartezeit von 5 Sekunden vor dem nächsten Neustart
+RestartSec=5
+
+StandardOutput=inherit
+StandardError=inherit
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 2. Dienst aktivieren und starten
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable puzzlesolver.service
+sudo systemctl start puzzlesolver.service
+```
+
+### 3. Status und Logs überwachen
+
+```bash
+# Status abfragen
+sudo systemctl status puzzlesolver.service
+
+# Live-Logs anzeigen
+journalctl -u puzzlesolver.service -f
+```
+
+### 4. Restart Service
+
+```bash
+sudo systemctl restart puzzlesolver.service
+```

@@ -14,16 +14,10 @@ def generate_corner_combinations(corner_candidates):
     """Generate all possible corner combinations for given candidates, sorted by quality."""
     # For puzzles, we need exactly 4 corners
     if len(corner_candidates) < 4:
-        print(f"  ❌ Not enough corner candidates: {len(corner_candidates)} < 4")
+        print(f"  ⚠️ Not enough corner candidates: {len(corner_candidates)} < 4")
         return []
 
-    # Step 1: Permutations of pieces (which piece in which corner)
-    # We need exactly 4 pieces for the 4 corners
     piece_permutations = list(itertools.permutations(corner_candidates, 4))
-
-    print(
-        f"  Piece permutations: {len(piece_permutations)} (which piece → which corner)"
-    )
 
     # Step 2: For each permutation, generate corner rotation combinations
     all_corner_combinations = []
@@ -110,9 +104,6 @@ def evaluate_corner_layouts(
     sorted by score descending.
     """
     initial_corners_to_evaluate = min(initial_corner_count, len(all_combinations))
-    print(
-        f"  Will evaluate {initial_corners_to_evaluate} corner layouts before trying edges..."
-    )
 
     corner_evaluations = []
 
@@ -151,20 +142,11 @@ def evaluate_corner_layouts(
         all_scores.append(score)
 
         if (combo_idx + 1) % 25 == 0:
-            # Show which pieces are where
-            piece_ids = [int(p.id) for p in piece_permutation]
-            print(
-                f"    Evaluated {combo_idx + 1}/{initial_corners_to_evaluate} corners... (e.g. pieces {piece_ids})"
-            )
+            print(f"    {combo_idx + 1}/{initial_corners_to_evaluate} corners evaluated...")
 
-    # Sort by corner score
-    corner_evaluations.sort(key=lambda x: x[4], reverse=True)  # x[4] is score
+    corner_evaluations.sort(key=lambda x: x[4], reverse=True)
 
-    print(f"\n  📊 Top 10 corner layouts (corner-only scores):")
-    for i, (idx, piece_perm, rotation_indices, _, score) in enumerate(
-        corner_evaluations[:10]
-    ):
-        piece_ids = [int(p.id) for p in piece_perm]
-        print(f"    {i + 1}. Combo {idx}: pieces {piece_ids}, score={score:.1f}")
+    top = corner_evaluations[0]
+    print(f"  Top corner layout: pieces {[int(p.id) for p in top[1]]}, score={top[4]:.0f}")
 
     return corner_evaluations
