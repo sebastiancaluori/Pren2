@@ -480,9 +480,20 @@ class PuzzlePipeline:
                 scorer=self.scorer,
                 slide_positions=self.config.tuning.wall_align_slide_positions,
             )
-            solution.remaining_placements = wall_aligner.finetune(
+            score_before = self.scorer.score(
+                self.renderer.render(solution.remaining_placements, piece_shapes), align_target
+            )
+            aligned_placements = wall_aligner.finetune(
                 solution.remaining_placements, piece_shapes, align_target
             )
+            score_after = self.scorer.score(
+                self.renderer.render(aligned_placements, piece_shapes), align_target
+            )
+            if score_after >= score_before:
+                solution.remaining_placements = aligned_placements
+                self.logger.info(f"  WallAlign accepted: {score_before:.0f} → {score_after:.0f}")
+            else:
+                self.logger.info(f"  WallAlign reverted: {score_after:.0f} < {score_before:.0f} (keeping solver result)")
 
         # Phase 2b: Fine-tuning auf voller Aufloesung
         all_guesses_for_finetune = (
@@ -516,7 +527,7 @@ class PuzzlePipeline:
         # All guesses (coarse coords) — fine-tuner already appended its steps
         all_guesses = all_guesses_for_finetune
 
-        # Append final coarse result if not already there
+        # Append final result (wall-aligned, what gets sent to the robot)
         if coarse_fine_placements:
             if not all_guesses or all_guesses[-1] != coarse_fine_placements:
                 all_guesses.append(coarse_fine_placements)
@@ -525,7 +536,7 @@ class PuzzlePipeline:
 
         # Normalise to weight=1.0 so the visualizer (which uses no weight_multiplier) can match it
         best_score = solution.score / self._score_weight
-        best_guess = coarse_fine_placements
+        best_guess = all_guesses[-1] if all_guesses else coarse_fine_placements
         best_guess_index = len(all_guesses) - 1 if all_guesses else 0
 
         # Populate place_pose with fine coordinates (precision output for robot).
@@ -758,9 +769,11 @@ class PuzzlePipeline:
                 result.append({**p, "x": p["x"] + shift_x, "y": p["y"] + shift_y})
                 continue
 
+            if pull_px <= 0:
+                result.append(p)
+                continue
+
             # Corner/center: check all four edges of the bounding box against walls.
-            # top-left alone is unreliable for large pieces — a tall bottom piece
-            # has its top-left y in the upper half of the canvas.
             shape = piece_shapes_fine.get(p["piece_id"])
             canvas_w = self.resolution.fine_a4_width
             canvas_h = self.resolution.fine_a4_height
@@ -772,7 +785,6 @@ class PuzzlePipeline:
             thr = pull_px * 8
             x0, y0, x1, y1 = p["x"], p["y"], p["x"] + pw, p["y"] + ph
             new_x, new_y = p["x"], p["y"]
-            # Snap to wall + pull_px gap — avoids rounding accumulation from wall-align
             if x0 <= thr:
                 new_x = pull_px
             elif x1 >= canvas_w - thr:

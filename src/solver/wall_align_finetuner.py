@@ -43,9 +43,14 @@ class WallAlignFinetuner:
             placed_so_far = result_corners + result_edges
             result_edges.append(self._push_and_slide_edge(p, piece_shapes, placed_so_far, target, width, height))
 
-        final = result_corners + result_edges + result_centers
+        result_centers_placed = []
+        for p in result_centers:
+            placed_so_far = result_corners + result_edges + result_centers_placed
+            result_centers_placed.append(self._place_center(p, piece_shapes, placed_so_far, target, width, height))
+
+        final = result_corners + result_edges + result_centers_placed
         print(f"  WallAlign: {len(result_corners)} corners pushed, "
-              f"{len(result_edges)} edges slid, {len(result_centers)} centers unchanged")
+              f"{len(result_edges)} edges slid, {len(result_centers_placed)} centers grid-placed")
         return final
 
     def _placement_role(self, placement, piece_shapes, width, height):
@@ -110,6 +115,28 @@ class WallAlignFinetuner:
             if score > best_score:
                 best_score = score
                 best_placement = candidate
+
+        return best_placement
+
+    def _place_center(self, placement, piece_shapes, current_placements, target, width, height):
+        pid = placement["piece_id"]
+        theta = placement["theta"]
+        rotated = rotate_and_crop(piece_shapes[pid], theta)
+        ph, pw = rotated.shape
+
+        xs = np.linspace(0, max(0, width - pw), num=self.slide_positions)
+        ys = np.linspace(0, max(0, height - ph), num=self.slide_positions)
+
+        best_placement = placement
+        best_score = -float("inf")
+        for y in ys:
+            for x in xs:
+                candidate = {**placement, "x": float(x), "y": float(y)}
+                rendered = self.renderer.render(current_placements + [candidate], piece_shapes)
+                score = self.scorer.score(rendered, target)
+                if score > best_score:
+                    best_score = score
+                    best_placement = candidate
 
         return best_placement
 

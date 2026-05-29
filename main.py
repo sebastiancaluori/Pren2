@@ -48,7 +48,9 @@ def main():
         else:
             logger.info("Kameramodul gefunden")
 
-        pipeline = PuzzlePipeline(config, show_ui=True, puzzle_dir=puzzle_dir, skip_camera=_no_camera)
+        pipeline = PuzzlePipeline(
+            config, show_ui=False, puzzle_dir=puzzle_dir, skip_camera=_no_camera
+        )
         result = pipeline.run()
 
         if result.success:

@@ -3,7 +3,6 @@ Edge placement logic for the iterative solver.
 Handles edge piece positioning, sliding optimization, and center piece placement.
 """
 
-import random
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -86,27 +85,34 @@ def try_edge_placement_on_corners(
         else:
             print(f"    edge {edge_piece.id}: no placement found")
 
-    # Place center pieces (simple for now - just random)
+    # Place center pieces at the centroid of the remaining empty space
     for center_piece in center_pieces:
         piece_id = int(center_piece.id)
         theta = 0
         rotated = rotate_and_crop(piece_shapes[piece_id], theta)
         piece_h, piece_w = rotated.shape
 
-        x = random.uniform(center_piece_margin, target.shape[1] - piece_w - center_piece_margin)
-        y = random.uniform(center_piece_margin, target.shape[0] - piece_h - center_piece_margin)
+        # Render current state to find empty pixels
+        rendered_so_far = renderer.render(current_placements, piece_shapes)
+        empty_mask = (rendered_so_far == 0).astype(np.uint8)
+
+        ys, xs = np.where(empty_mask > 0)
+        if len(xs) > 0:
+            cx = float(np.mean(xs))
+            cy = float(np.mean(ys))
+            x = np.clip(cx - piece_w / 2, center_piece_margin, target.shape[1] - piece_w - center_piece_margin)
+            y = np.clip(cy - piece_h / 2, center_piece_margin, target.shape[0] - piece_h - center_piece_margin)
+        else:
+            x = (target.shape[1] - piece_w) / 2
+            y = (target.shape[0] - piece_h) / 2
 
         current_placements.append(
-            {"piece_id": piece_id, "x": x, "y": y, "theta": theta}
+            {"piece_id": piece_id, "x": float(x), "y": float(y), "theta": theta}
         )
 
     # Final render and score
     rendered = renderer.render(current_placements, piece_shapes)
     final_score = scorer.score(rendered, target)
-
-    # Add final to visualizer
-    all_guesses.append(current_placements.copy())
-    all_scores.append(final_score)
 
     return {
         "final_score": final_score,
