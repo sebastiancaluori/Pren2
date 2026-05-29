@@ -140,11 +140,11 @@ class SolverTuning:
 
     # --- Scoring (scorer.py) ---
     overlap_penalty: float = 3.0
-    coverage_reward: float = 2.0
+    coverage_reward: float = 1.0
     gap_penalty: float = 0.2
     score_max: float = 100_000.0  # Referenz-/Maximalscore (Normalisierung + Erfolg)
     score_accept: float = (
-        90_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
+        93_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
     )
 
     # --- Corner Detection (corner_detector.py) ---
@@ -196,6 +196,7 @@ class SolverTuning:
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
     skip_wall_align: bool = True  # Wandausrichtung nach dem Solver überspringen
+    skip_edge_slide: bool = False  # Edge-Teile entlang ihrer Wand verschieben
     wall_align_slide_positions: int = (
         120  # Rasterpositionen beim Entlanggleiten an der Wand
     )

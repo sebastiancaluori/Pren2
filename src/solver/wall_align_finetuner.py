@@ -118,6 +118,24 @@ class WallAlignFinetuner:
 
         return best_placement
 
+    def slide_edges(self, placements, piece_shapes, target):
+        """Slide only edge pieces along their wall for best fit. Corners and centers unchanged."""
+        height, width = target.shape
+        result = []
+        placed_so_far = []
+        for p in placements:
+            role = self._placement_role(p, piece_shapes, width, height)
+            if role == "edge":
+                slid = self._push_and_slide_edge(p, piece_shapes, placed_so_far, target, width, height)
+                result.append(slid)
+                placed_so_far.append(slid)
+            else:
+                result.append(p)
+                placed_so_far.append(p)
+        edge_count = sum(1 for p in placements if self._placement_role(p, piece_shapes, width, height) == "edge")
+        print(f"  EdgeSlide: {edge_count} edge(s) slid along wall")
+        return result
+
     def _place_center(self, placement, piece_shapes, current_placements, target, width, height):
         pid = placement["piece_id"]
         theta = placement["theta"]

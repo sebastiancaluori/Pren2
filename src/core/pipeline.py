@@ -495,6 +495,25 @@ class PuzzlePipeline:
             else:
                 self.logger.info(f"  WallAlign reverted: {score_after:.0f} < {score_before:.0f} (keeping solver result)")
 
+        # Phase 2b-pre2: Edge sliding along wall
+        if not self.config.tuning.skip_edge_slide and solution.remaining_placements:
+            self.logger.info("Phase 2b-pre2: Kanten entlang Wand verschieben...")
+            dilation_px = int(round(self.config.tuning.gap_dilation_mm * self.resolution.solver_px_per_mm))
+            align_target = target
+            if dilation_px > 0:
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE, (2 * dilation_px + 1, 2 * dilation_px + 1)
+                )
+                align_target = cv2.dilate(target.astype(np.uint8), kernel).astype(target.dtype)
+            edge_slider = WallAlignFinetuner(
+                renderer=self.renderer,
+                scorer=self.scorer,
+                slide_positions=self.config.tuning.wall_align_slide_positions,
+            )
+            solution.remaining_placements = edge_slider.slide_edges(
+                solution.remaining_placements, piece_shapes, align_target
+            )
+
         # Phase 2b: Fine-tuning auf voller Aufloesung
         all_guesses_for_finetune = (
             solution.all_guesses if solution.all_guesses is not None else []
