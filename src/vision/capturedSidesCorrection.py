@@ -14,9 +14,10 @@ DEBUG_CORRECTION_POINTS_IMAGE_PATH = "debug_correction_points.png"
 DEBUG_CORRECTED_OVERLAY_IMAGE_PATH = "debug_corrected_overlay.png"
 DEBUG_FINAL_MASK_IMAGE_PATH = "debug_final_mask.png"
 
-# Kamerahöhe über der A4-Fläche in mm.
+# Kamerahöhe über der A4-Fläche in mm. Nur für lokale Ausführung von Bedeutung
 CAMERA_HEIGHT_MM = 500.0
-
+# Höhe der Teile in mm.
+PIECE_HEIGHT = 6
 # Kleine Konturen ignorieren.
 MIN_CONTOUR_AREA_PX = 2000
 
@@ -54,7 +55,7 @@ def move_points_towards_center(
     if height_mm == 0:
         raise ValueError("height_mm darf nicht 0 sein.")
 
-    factor = 3.0 / height_mm
+    factor = PIECE_HEIGHT / height_mm
 
     points_float = points.astype(np.float32)
     center_array = np.array(center, dtype=np.float32)
