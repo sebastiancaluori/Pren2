@@ -9,7 +9,7 @@ import json
 import shutil
 import time
 from pathlib import Path
-from capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
+from .capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
 
 import cv2
 import numpy as np
@@ -126,7 +126,7 @@ SAVE_DEBUG_FILES = True
 
 # False = Kantenkorrektur wird nicht ausgeführt.
 # True Kantenkorrektur wird durchgeführt aber Stand 1.Juni noch ziemlich wonky
-CALCULATE_AREA_WITHOUT_SIDES = False
+CALCULATE_AREA_WITHOUT_SIDES = True
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
