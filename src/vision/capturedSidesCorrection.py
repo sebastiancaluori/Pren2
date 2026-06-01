@@ -17,7 +17,7 @@ DEBUG_FINAL_MASK_IMAGE_PATH = "debug_final_mask.png"
 # Kamerahöhe über der A4-Fläche in mm. Nur für lokale Ausführung von Bedeutung
 CAMERA_HEIGHT_MM = 500.0
 # Höhe der Teile in mm.
-PIECE_HEIGHT = 6
+PIECE_HEIGHT = 6.0
 # Kleine Konturen ignorieren.
 MIN_CONTOUR_AREA_PX = 2000
 

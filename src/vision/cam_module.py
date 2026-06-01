@@ -126,7 +126,7 @@ SAVE_DEBUG_FILES = True
 
 # False = Kantenkorrektur wird nicht ausgeführt.
 # True Kantenkorrektur wird durchgeführt aber Stand 1.Juni noch ziemlich wonky
-CALCULATE_AREA_WITHOUT_SIDES = True
+CALCULATE_AREA_WITHOUT_SIDES = False
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -143,7 +143,7 @@ A4_WIDTH_MM = 297.0
 # Höhe der A4-Fläche im Querformat in mm.
 A4_HEIGHT_MM = 210.0
 # Höhe der Kamera über der A4 Fläche in mm.
-CAM_HEIGHT = 700
+CAM_HEIGHT = 700.0
 # Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
 # Interne Auflösung mit der das Cam Modul arbeitet, so hoch wie möglich bzw sinnvoll
 WORKING_INTERNAL_PX_PER_MM = 6.0
