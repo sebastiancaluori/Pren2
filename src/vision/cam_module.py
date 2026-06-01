@@ -126,7 +126,7 @@ SAVE_DEBUG_FILES = True
 
 # False = Kantenkorrektur wird nicht ausgeführt.
 # True Kantenkorrektur wird durchgeführt aber Stand 1.Juni noch ziemlich wonky
-CALCULATE_AREA_WITHOUT_SIDES = True
+CALCULATE_AREA_WITHOUT_SIDES = False
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
