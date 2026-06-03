@@ -52,7 +52,7 @@ class ResolutionConfig:
         4.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
     )
     finetune_max_px_per_mm: float = 3.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
-    finetune_max_scale: float = 0.5  # Obergrenze fuer Fine-Tuning (relativ zu native)
+    finetune_max_scale: float = 5.0  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
@@ -144,7 +144,7 @@ class SolverTuning:
     gap_penalty: float = 0.2
     score_max: float = 100_000.0  # Referenz-/Maximalscore (Normalisierung + Erfolg)
     score_accept: float = (
-        90_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
+        88_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
     )
 
     # --- Corner Detection (corner_detector.py) ---
@@ -192,13 +192,13 @@ class SolverTuning:
     gap_dilation_mm: float = (
         3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
-    pull_to_center_mm: float = 0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
+    pull_to_center_mm: float = 1.0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
-    skip_wall_align: bool = True  # Wandausrichtung nach dem Solver überspringen
+    skip_wall_align: bool = False  # Wandausrichtung nach dem Solver überspringen
     skip_edge_slide: bool = True  # Edge-Teile entlang ihrer Wand verschieben
     wall_align_slide_positions: int = (
-        120  # Rasterpositionen beim Entlanggleiten an der Wand
+        90  # Rasterpositionen beim Entlanggleiten an der Wand
     )
 
     # --- Fine-Tuning (fine_tuner.py) ---

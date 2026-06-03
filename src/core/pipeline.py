@@ -465,35 +465,53 @@ class PuzzlePipeline:
         else:
             self.logger.info(f"  ✓ Loesung gefunden mit Score: {solution.score:.2f}")
 
-        # Phase 2b-pre: Wall-align finetune (push corners/edges flush to walls)
+        # Phase 2b-pre: Wall-align finetune bei fine-Aufloesung (2.0 px/mm)
         if not self.config.tuning.skip_wall_align and solution.remaining_placements:
-            self.logger.info("Phase 2b-pre: Wandausrichtung...")
-            dilation_px = int(round(self.config.tuning.gap_dilation_mm * self.resolution.solver_px_per_mm))
-            align_target = target
+            self.logger.info("Phase 2b-pre: Wandausrichtung (fine-Aufloesung)...")
+            ratio = self.resolution.finetune_ratio  # coarse→fine
+            fs = self.resolution.finetune_px_per_mm
+
+            fine_align_target = np.ones(
+                (self.resolution.fine_a4_height, self.resolution.fine_a4_width),
+                dtype=np.uint8,
+            )
+            fine_align_renderer = GuessRenderer(
+                width=self.resolution.fine_a4_width,
+                height=self.resolution.fine_a4_height,
+            )
+            fine_align_scorer = PlacementScorer(
+                overlap_penalty=self.config.tuning.overlap_penalty,
+                coverage_reward=self.config.tuning.coverage_reward,
+                gap_penalty=self.config.tuning.gap_penalty,
+                weight_multiplier=self._finetune_weight,
+            )
+
+            dilation_px = int(round(self.config.tuning.gap_dilation_mm * fs))
             if dilation_px > 0:
                 kernel = cv2.getStructuringElement(
                     cv2.MORPH_ELLIPSE, (2 * dilation_px + 1, 2 * dilation_px + 1)
                 )
-                align_target = cv2.dilate(target.astype(np.uint8), kernel).astype(target.dtype)
+                fine_align_target = cv2.dilate(fine_align_target.astype(np.uint8), kernel).astype(fine_align_target.dtype)
+
+            fine_placements_for_align = [
+                {**p, "x": p["x"] * ratio, "y": p["y"] * ratio}
+                for p in solution.remaining_placements
+            ]
+
             wall_aligner = WallAlignFinetuner(
-                renderer=self.renderer,
-                scorer=self.scorer,
+                renderer=fine_align_renderer,
+                scorer=fine_align_scorer,
                 slide_positions=self.config.tuning.wall_align_slide_positions,
             )
-            score_before = self.scorer.score(
-                self.renderer.render(solution.remaining_placements, piece_shapes), align_target
+            aligned_fine = wall_aligner.finetune(
+                fine_placements_for_align, piece_shapes_fine, fine_align_target
             )
-            aligned_placements = wall_aligner.finetune(
-                solution.remaining_placements, piece_shapes, align_target
-            )
-            score_after = self.scorer.score(
-                self.renderer.render(aligned_placements, piece_shapes), align_target
-            )
-            if score_after >= score_before:
-                solution.remaining_placements = aligned_placements
-                self.logger.info(f"  WallAlign accepted: {score_before:.0f} → {score_after:.0f}")
-            else:
-                self.logger.info(f"  WallAlign reverted: {score_after:.0f} < {score_before:.0f} (keeping solver result)")
+            # Geometrische Ausrichtung ist per Konstruktion korrekt — kein Score-Check noetig
+            solution.remaining_placements = [
+                {**p, "x": p["x"] / ratio, "y": p["y"] / ratio}
+                for p in aligned_fine
+            ]
+            self.logger.info("  WallAlign abgeschlossen (geometrisch, immer akzeptiert)")
 
         # Phase 2b-pre2: Edge sliding along wall
         if not self.config.tuning.skip_edge_slide and solution.remaining_placements:

@@ -100,23 +100,56 @@ class WallAlignFinetuner:
 
         if side in ("left", "right"):
             fixed_x = 0.0 if side == "left" else float(width - pw)
-            positions = np.linspace(0, max(0, height - ph), num=self.slide_positions)
-            candidates = [{**placement, "x": fixed_x, "y": float(pos), "side": side} for pos in positions]
+            slide_pos = self._center_of_valid_range(
+                current_placements, piece_shapes, axis="y",
+                fixed_coord=fixed_x, fixed_key="x", piece_size=ph, wall_size=height,
+            )
+            return {**placement, "x": fixed_x, "y": slide_pos, "side": side}
         else:
             fixed_y = 0.0 if side == "top" else float(height - ph)
-            positions = np.linspace(0, max(0, width - pw), num=self.slide_positions)
-            candidates = [{**placement, "x": float(pos), "y": fixed_y, "side": side} for pos in positions]
+            slide_pos = self._center_of_valid_range(
+                current_placements, piece_shapes, axis="x",
+                fixed_coord=fixed_y, fixed_key="y", piece_size=pw, wall_size=width,
+            )
+            return {**placement, "x": slide_pos, "y": fixed_y, "side": side}
 
-        best_placement = candidates[0]
-        best_score = -float("inf")
-        for candidate in candidates:
-            rendered = self.renderer.render(current_placements + [candidate], piece_shapes)
-            score = self.scorer.score(rendered, target)
-            if score > best_score:
-                best_score = score
-                best_placement = candidate
+    def _center_of_valid_range(self, current_placements, piece_shapes, axis, fixed_coord, fixed_key, piece_size, wall_size):
+        """Findet den Mittelpunkt des kollisionsfreien Bereichs entlang der Gleitachse.
 
-        return best_placement
+        Scannt alle Positionen, bestimmt den laengsten Bereich ohne Ueberlappung,
+        gibt dessen Mitte zurueck.
+        """
+        first_good = None
+        last_good = None
+
+        for pos in range(int(wall_size - piece_size) + 1):
+            if self._overlaps(current_placements, piece_shapes, axis, pos, piece_size):
+                continue
+            if first_good is None:
+                first_good = pos
+            last_good = pos
+
+        if first_good is None:
+            return float((wall_size - piece_size) / 2.0)
+        return float((first_good + last_good) / 2.0)
+
+    def _overlaps(self, placements, piece_shapes, axis, pos, piece_size):
+        """True wenn das Teil an Position pos entlang axis mit einem platzierten Teil ueberlappt."""
+        p_start = float(pos)
+        p_end = p_start + piece_size
+        for p in placements:
+            pid = p["piece_id"]
+            if pid not in piece_shapes:
+                continue
+            rotated = rotate_and_crop(piece_shapes[pid], p["theta"])
+            ph, pw = rotated.shape
+            if axis == "x":
+                o_start, o_end = p["x"], p["x"] + pw
+            else:
+                o_start, o_end = p["y"], p["y"] + ph
+            if o_start < p_end and o_end > p_start:
+                return True
+        return False
 
     def slide_edges(self, placements, piece_shapes, target):
         """Slide only edge pieces along their wall for best fit. Corners and centers unchanged."""
@@ -142,21 +175,15 @@ class WallAlignFinetuner:
         rotated = rotate_and_crop(piece_shapes[pid], theta)
         ph, pw = rotated.shape
 
-        xs = np.linspace(0, max(0, width - pw), num=self.slide_positions)
-        ys = np.linspace(0, max(0, height - ph), num=self.slide_positions)
-
-        best_placement = placement
-        best_score = -float("inf")
-        for y in ys:
-            for x in xs:
-                candidate = {**placement, "x": float(x), "y": float(y)}
-                rendered = self.renderer.render(current_placements + [candidate], piece_shapes)
-                score = self.scorer.score(rendered, target)
-                if score > best_score:
-                    best_score = score
-                    best_placement = candidate
-
-        return best_placement
+        x = self._center_of_valid_range(
+            current_placements, piece_shapes, axis="x",
+            fixed_coord=None, fixed_key="y", piece_size=pw, wall_size=width,
+        )
+        y = self._center_of_valid_range(
+            current_placements, piece_shapes, axis="y",
+            fixed_coord=None, fixed_key="x", piece_size=ph, wall_size=height,
+        )
+        return {**placement, "x": x, "y": y}
 
     def _infer_side(self, placement, pw, ph, width, height):
         cx = placement["x"] + pw / 2.0
