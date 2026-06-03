@@ -449,12 +449,14 @@ class PuzzlePipeline:
         # Create initial placements from PuzzlePiece objects
         initial_placements = self._create_initial_placements_from_pieces(puzzle_pieces)
 
+        score_accept = self._compute_dynamic_score_accept(piece_shapes, target)
+
         solution = iterative_solver.solve_iteratively(
             piece_shapes=piece_shapes,
             target=target,
             puzzle_pieces=puzzle_pieces,
             score_max=self.config.tuning.score_max,
-            score_accept=self.config.tuning.score_accept,
+            score_accept=score_accept,
             initial_corner_count=self.tuning.initial_corner_count,
             max_corners_to_refine=self.tuning.max_corners_to_refine,
             max_iterations=self.tuning.max_iterations,
@@ -512,6 +514,18 @@ class PuzzlePipeline:
                 for p in aligned_fine
             ]
             self.logger.info("  WallAlign abgeschlossen (geometrisch, immer akzeptiert)")
+            for p in aligned_fine:
+                pid = p["piece_id"]
+                shape = piece_shapes_fine.get(pid)
+                if shape is not None:
+                    from src.utils.geometry import rotate_and_crop as _dbg_rac
+                    rsh = _dbg_rac(shape, p["theta"])
+                    ph_, pw_ = rsh.shape
+                    self.logger.info(
+                        f"    [{pid}] side={p.get('side','corner/center'):6s} "
+                        f"x={p['x']:.1f}..{p['x']+pw_:.1f}  y={p['y']:.1f}..{p['y']+ph_:.1f}  "
+                        f"(pw={pw_} ph={ph_})  canvas={self.resolution.fine_a4_width}x{self.resolution.fine_a4_height}"
+                    )
 
         # Phase 2b-pre2: Edge sliding along wall
         if not self.config.tuning.skip_edge_slide and solution.remaining_placements:
@@ -553,6 +567,20 @@ class PuzzlePipeline:
                 all_guesses_for_finetune,
             )
         fine_placements = self._pull_to_center(fine_placements, piece_shapes_fine)
+        for p in fine_placements:
+            pid = p["piece_id"]
+            shape = piece_shapes_fine.get(pid)
+            if shape is not None:
+                from src.utils.geometry import rotate_and_crop as _dbg_rac2
+                rsh = _dbg_rac2(shape, p["theta"])
+                ph_, pw_ = rsh.shape
+                dist_left = p["x"]
+                dist_right = self.resolution.fine_a4_width - (p["x"] + pw_)
+                self.logger.info(
+                    f"  [pull] [{pid}] side={p.get('side','corner/center'):6s} "
+                    f"x={p['x']:.1f}  dist_left={dist_left:.1f}  dist_right={dist_right:.1f}  "
+                    f"y={p['y']:.1f}  dist_top={p['y']:.1f}  dist_bot={self.resolution.fine_a4_height-(p['y']+ph_):.1f}"
+                )
         # fine_placements are in fine-coordinate space.
         # Convert back to coarse for the visualizer/pipeline dict.
         ratio = self.resolution.finetune_ratio
@@ -695,6 +723,35 @@ class PuzzlePipeline:
         }
 
         return surfaces
+
+    def _compute_dynamic_score_accept(self, piece_shapes: dict, target: np.ndarray) -> float:
+        """Berechnet score_accept dynamisch anhand der Teilflaechen vs. Zielflaeche.
+
+        Bei Puzzles mit grossen Luecken ist der erreichbare Maximalscore kleiner als
+        score_max. Der Accept-Schwellwert wird als Anteil des theoretischen Maximums
+        berechnet, sodass er sich automatisch anpasst.
+        """
+        target_area = max(1, int(np.sum(target > 0)))
+        total_piece_area = sum(
+            int(np.sum(shape > 0)) for shape in piece_shapes.values()
+        )
+        coverage_ratio = min(1.0, total_piece_area / target_area)
+
+        t = self.config.tuning
+        # Theoretischer Maximalscore: perfekte Abdeckung ohne Ueberlappung
+        # = coverage_reward * piece_area * weight - gap_penalty * gap_area * weight
+        theoretical_max = t.score_max * (
+            coverage_ratio * (t.coverage_reward + t.gap_penalty) - t.gap_penalty
+        )
+        theoretical_max = max(0.0, theoretical_max)
+
+        score_accept = theoretical_max * t.score_accept_ratio
+        self.logger.info(
+            f"  → Dynamischer Score-Accept: {score_accept:.0f} "
+            f"(coverage_ratio={coverage_ratio:.2%}, theoretical_max={theoretical_max:.0f}, "
+            f"ratio={t.score_accept_ratio})"
+        )
+        return score_accept
 
     def _create_initial_placements_from_pieces(self, puzzle_pieces):
         """

@@ -143,8 +143,8 @@ class SolverTuning:
     coverage_reward: float = 1.0
     gap_penalty: float = 0.2
     score_max: float = 100_000.0  # Referenz-/Maximalscore (Normalisierung + Erfolg)
-    score_accept: float = (
-        88_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
+    score_accept_ratio: float = (
+        0.98  # Frühzeitiger Abbruch bei diesem Anteil des theoretischen Maximalscores
     )
 
     # --- Corner Detection (corner_detector.py) ---
@@ -192,7 +192,7 @@ class SolverTuning:
     gap_dilation_mm: float = (
         3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
-    pull_to_center_mm: float = 1.0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
+    pull_to_center_mm: float = 2.5  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
     skip_wall_align: bool = False  # Wandausrichtung nach dem Solver überspringen
