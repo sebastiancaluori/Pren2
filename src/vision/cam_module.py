@@ -1,5 +1,5 @@
 # cam_module.py
-
+# Repo Test
 # tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
 
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
@@ -9,7 +9,7 @@ import json
 import shutil
 import time
 from pathlib import Path
-from .capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
+from capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
 
 import cv2
 import numpy as np
