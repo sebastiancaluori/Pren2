@@ -93,6 +93,62 @@ CAMERA_CONTROLS_FOR_INTERNAL_USE = {
     "ColourGains": (1.5, 1.5),
 }
 
+# Kameraeinstellungen für ArUco-Wiederholaufnahmen.
+# Ziel: robuste Markererkennung bei wechselnder Beleuchtung.
+ARUCO_CAMERA_CONTROL_TRIES = [
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 6000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 8000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 10000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 12000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 4000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 3000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 15000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+]
+
+CAMERA_CONTROL_SETTLE_SECONDS = 0.4
+
 
 # ============================================================
 # AUSGABE / DEBUG-DATEIEN
@@ -510,6 +566,18 @@ def captureImageFromInitializedCamera(cam, controls=None, waitSecondsBetweeCaptu
             )
             time.sleep(remainingSeconds)
 
+    if controls is not None:
+        print(
+            "Setze Kameraeinstellungen: "
+            f"ExposureTime={controls.get('ExposureTime')}, "
+            f"AnalogueGain={controls.get('AnalogueGain')}, "
+            f"ColourGains={controls.get('ColourGains')}"
+        )
+        cam.set_controls(controls)
+
+        if waitSecondsBetweeCapture > 0:
+            time.sleep(waitSecondsBetweeCapture)
+
     print("Nehme Bild auf...")
     imageBgr = cam.capture_array()
 
@@ -582,6 +650,68 @@ def getInputImage(cam=None):
 
     raise ValueError('IMAGE_SOURCE muss "camera" oder "file" sein.')
 
+def getMissingMarkerIds(detectedMarkers):
+    return [markerId for markerId in REQUIRED_IDS if markerId not in detectedMarkers]
+
+
+def captureImageForArucoDetection(cam=None):
+    # Bei Dateitest bleibt alles wie bisher.
+    if IMAGE_SOURCE != "camera":
+        return getInputImage(cam)
+
+    # Wenn keine PiCamera verfügbar ist, bleibt ebenfalls der bisherige Fallback auf Datei.
+    if cam is None and not isPiCameraAvailable():
+        return getInputImage(cam)
+
+    bestImage = None
+    bestDetectedMarkers = {}
+    bestDetectedCount = -1
+
+    for attemptIndex, controls in enumerate(ARUCO_CAMERA_CONTROL_TRIES, start=1):
+        print(f"ArUco-Aufnahme Versuch {attemptIndex}/{len(ARUCO_CAMERA_CONTROL_TRIES)}")
+
+        if cam is not None:
+            imageBgr = captureImageFromInitializedCamera(
+                cam,
+                controls=controls,
+                waitSecondsBetweeCapture=CAMERA_CONTROL_SETTLE_SECONDS,
+            )
+        else:
+            # Standalone-Fall: Kamera selber starten.
+            localCam = None
+            try:
+                localCam = initCamera()
+                imageBgr = captureImageFromInitializedCamera(
+                    localCam,
+                    controls=controls,
+                    waitSecondsBetweeCapture=CAMERA_CONTROL_SETTLE_SECONDS,
+                )
+            finally:
+                stopCamera(localCam)
+
+        detectedMarkers, _ = detectArucoMarkers(imageBgr)
+        detectedCount = len(detectedMarkers)
+
+        print(
+            f"Erkannte ArUco-Marker: {detectedCount}/{len(REQUIRED_IDS)}, "
+            f"fehlend: {getMissingMarkerIds(detectedMarkers)}"
+        )
+
+        if detectedCount > bestDetectedCount:
+            bestImage = imageBgr
+            bestDetectedMarkers = detectedMarkers
+            bestDetectedCount = detectedCount
+
+        if detectedCount == len(REQUIRED_IDS):
+            print("Alle ArUco-Marker erkannt.")
+            return imageBgr
+
+    print(
+        "Keine Aufnahme mit allen ArUco-Markern gefunden. "
+        f"Beste Aufnahme hatte {bestDetectedCount}/{len(REQUIRED_IDS)} Marker."
+    )
+
+    return bestImage
 
 # ============================================================
 # ARUCO / A4-ERKENNUNG MIT OFFSET
@@ -1885,7 +2015,8 @@ def main(cam=None):
         print(f"Algorithmus-Input-Ordner geleert: {DESTINATION_TO_ALGO_INPUT_FOLDER}")
         clearDebugOutputFolder()
         print(f"Debug-Output-Ordner geleert: {OUTPUT_DIR}")
-        imageBgr = getInputImage(cam)
+        #imageBgr = getInputImage(cam)
+        imageBgr = captureImageForArucoDetection(cam)
         imageBgr = rotateImageIfNeeded(imageBgr)
 
         if SAVE_DEBUG_FILES:
