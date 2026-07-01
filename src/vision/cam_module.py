@@ -240,6 +240,17 @@ ARUCO_DICT = cv2.aruco.DICT_4X4_50
 # Diese Marker-IDs müssen erkannt werden, sonst kann die A4-Fläche nicht berechnet werden.
 REQUIRED_IDS = [0, 1, 2, 3]
 
+# Notfall-Fallback für A4-Ecken im Kamerabild.
+# Diese Werte müssen zum Bild nach rotateImageIfNeeded() passen.
+USE_FALLBACK_A4_CORNERS_IF_MARKERS_MISSING = True
+
+FALLBACK_A4_CORNERS_IMAGE = {
+    "top_left": (1621.0, 777.0),
+    "top_right": (3115.0, 768.0),
+    "bottom_right": (3119.0, 1828.0),
+    "bottom_left": (1622.0, 1828.0),
+}
+
 # A4 im Querformat
 # Breite der A4-Fläche im Querformat in mm.
 A4_WIDTH_MM = 297.0
@@ -926,6 +937,32 @@ def extractA4Corners(detectedMarkers):
     }
 
     return a4Corners, referenceCorners
+
+def buildFallbackA4Corners():
+    return {
+        cornerName: np.array(point, dtype=np.float32)
+        for cornerName, point in FALLBACK_A4_CORNERS_IMAGE.items()
+    }
+
+
+def getA4CornersFromMarkersOrFallback(detectedMarkers):
+    try:
+        a4Corners, referenceCorners = extractA4Corners(detectedMarkers)
+        return a4Corners, referenceCorners, False
+
+    except RuntimeError as error:
+        if not USE_FALLBACK_A4_CORNERS_IF_MARKERS_MISSING:
+            raise
+
+        print()
+        print("WARNUNG: A4-Ecken konnten nicht vollständig aus ArUco-Markern berechnet werden.")
+        print(error)
+        print("Verwende Fallback-A4-Koordinaten aus der Konfiguration.")
+
+        fallbackA4Corners = buildFallbackA4Corners()
+        fallbackReferenceCorners = buildFallbackA4Corners()
+
+        return fallbackA4Corners, fallbackReferenceCorners, True
 
 
 def calculate_native_a4_pixel_density(a4_corners_px):
@@ -2119,11 +2156,19 @@ def main(cam=None):
         detectedMarkers, rejectedCandidates = detectArucoMarkers(imageBgr)
         printConsoleMarkerInfo(detectedMarkers)
 
-        a4Corners, referenceCorners = extractA4Corners(detectedMarkers)
-        printConsoleCornerInfo(
-            "Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners
+        a4Corners, referenceCorners, usedA4Fallback = getA4CornersFromMarkersOrFallback(
+            detectedMarkers
         )
-        printConsoleCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
+
+        if usedA4Fallback:
+            printConsoleCornerInfo(
+                "Fallback-A4-Bildecken:", a4Corners
+            )
+        else:
+            printConsoleCornerInfo(
+                "Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners
+            )
+            printConsoleCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
 
         native_density = calculate_native_a4_pixel_density(a4Corners)
         print("Native Pixeldichte der A4-Fläche:")
@@ -2152,7 +2197,7 @@ def main(cam=None):
 
         if bestPartsResult["detectionIsValid"]:
             print("Teile-Erkennung mit ArUco-Aufnahme gültig.")
-        elif IMAGE_SOURCE == "camera":
+        elif IMAGE_SOURCE == "camera" and (cam is not None or isPiCameraAvailable()):
             for attemptIndex, controls in enumerate(PARTS_CAMERA_CONTROL_TRIES, start=1):
                 print(
                     f"Teile-Aufnahme Versuch {attemptIndex}/{len(PARTS_CAMERA_CONTROL_TRIES)}"
