@@ -146,9 +146,56 @@ ARUCO_CAMERA_CONTROL_TRIES = [
         "ColourGains": (1.5, 1.5),
     },
 ]
-
 CAMERA_CONTROL_SETTLE_SECONDS = 0.4
 
+# Kameraeinstellungen für Teile-Wiederholaufnahmen.
+# Ziel: stabiler Kontrast zwischen dunklen Puzzleteilen und heller A4-Fläche.
+PARTS_CAMERA_CONTROL_TRIES = [
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 6000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 5000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 7000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 4000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 8000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+    {
+        "AeEnable": False,
+        "AwbEnable": False,
+        "ExposureTime": 10000,
+        "AnalogueGain": 1.0,
+        "ColourGains": (1.5, 1.5),
+    },
+]
+
+PARTS_CAMERA_CONTROL_SETTLE_SECONDS = 0.4
 
 # ============================================================
 # AUSGABE / DEBUG-DATEIEN
@@ -2001,7 +2048,47 @@ def printConsolePartsInfo(detectedParts):
     print(f"Anzahl Teile: {len(detectedParts)}")
     print(f"Erwartet: {EXPECTED_PART_COUNT}")
 
+def processPartsDetectionImage(imageBgr, hImageToWarp):
+    warpedImageBgr = warpImageToA4(imageBgr, hImageToWarp)
 
+    binaryMask = buildPartsMask(warpedImageBgr)
+
+    if CALCULATE_AREA_WITHOUT_SIDES:
+        binaryMask = calculate_puzzle_piece_shape_without_sides(binaryMask, CAM_HEIGHT)
+
+    detectedParts = findAllValidParts(binaryMask)
+    detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
+    addDerivedPartValues(detectedParts)
+
+    areaValidationData = buildAreaValidationData(detectedParts)
+
+    partCountIsValid = isExpectedPartCount(len(detectedParts))
+    areaIsValid = areaValidationData["is_valid"]
+    detectionIsValid = partCountIsValid and areaIsValid
+
+    return {
+        "warpedImageBgr": warpedImageBgr,
+        "binaryMask": binaryMask,
+        "detectedParts": detectedParts,
+        "areaValidationData": areaValidationData,
+        "partCountIsValid": partCountIsValid,
+        "areaIsValid": areaIsValid,
+        "detectionIsValid": detectionIsValid,
+    }
+
+
+def scorePartsDetectionResult(result):
+    score = 0
+
+    if result["partCountIsValid"]:
+        score += 100
+
+    if result["areaIsValid"]:
+        score += 50
+
+    score += len(result["detectedParts"])
+
+    return score
 # ============================================================
 # HAUPTPROGRAMM
 # ============================================================
@@ -2060,30 +2147,73 @@ def main(cam=None):
             np.save(str(outputHImageToWarpPath), hImageToWarp)
             print(f"H gespeichert: {outputHImageToWarpPath}")
 
-        warpedImageBgr = warpImageToA4(imageBgr, hImageToWarp)
+        print("Teile-Erkennung Versuch 1: verwende ArUco-Aufnahme")
+        bestPartsResult = processPartsDetectionImage(imageBgr, hImageToWarp)
+
+        if bestPartsResult["detectionIsValid"]:
+            print("Teile-Erkennung mit ArUco-Aufnahme gültig.")
+        elif IMAGE_SOURCE == "camera":
+            for attemptIndex, controls in enumerate(PARTS_CAMERA_CONTROL_TRIES, start=1):
+                print(
+                    f"Teile-Aufnahme Versuch {attemptIndex}/{len(PARTS_CAMERA_CONTROL_TRIES)}"
+                )
+
+                if cam is not None:
+                    partsImageBgr = captureImageFromInitializedCamera(
+                        cam,
+                        controls=controls,
+                        waitSecondsBetweeCapture=PARTS_CAMERA_CONTROL_SETTLE_SECONDS,
+                    )
+                else:
+                    localCam = None
+                    try:
+                        localCam = initCamera()
+                        partsImageBgr = captureImageFromInitializedCamera(
+                            localCam,
+                            controls=controls,
+                            waitSecondsBetweeCapture=PARTS_CAMERA_CONTROL_SETTLE_SECONDS,
+                        )
+                    finally:
+                        stopCamera(localCam)
+
+                partsImageBgr = rotateImageIfNeeded(partsImageBgr)
+                currentPartsResult = processPartsDetectionImage(
+                    partsImageBgr,
+                    hImageToWarp,
+                )
+
+                print(
+                    f"Teile erkannt: {len(currentPartsResult['detectedParts'])}, "
+                    f"Anzahl gültig: {currentPartsResult['partCountIsValid']}, "
+                    f"Fläche gültig: {currentPartsResult['areaIsValid']}"
+                )
+
+                if scorePartsDetectionResult(currentPartsResult) > scorePartsDetectionResult(
+                    bestPartsResult
+                ):
+                    bestPartsResult = currentPartsResult
+
+                if currentPartsResult["detectionIsValid"]:
+                    print("Gültige Teile-Erkennung gefunden.")
+                    bestPartsResult = currentPartsResult
+                    break
+
+        warpedImageBgr = bestPartsResult["warpedImageBgr"]
+        binaryMask = bestPartsResult["binaryMask"]
+        detectedParts = bestPartsResult["detectedParts"]
+        areaValidationData = bestPartsResult["areaValidationData"]
+        partCountIsValid = bestPartsResult["partCountIsValid"]
+        areaIsValid = bestPartsResult["areaIsValid"]
+        detectionIsValid = bestPartsResult["detectionIsValid"]
 
         if SAVE_DEBUG_FILES:
             outputWarpPath = buildOutputPath(OUTPUT_WARP_FILENAME)
             savePngImage(outputWarpPath, warpedImageBgr)
             print(f"Warp-Bild gespeichert: {outputWarpPath}")
 
-        binaryMask = buildPartsMask(warpedImageBgr)
-        if CALCULATE_AREA_WITHOUT_SIDES:
-            binaryMask = calculate_puzzle_piece_shape_without_sides(binaryMask, CAM_HEIGHT)
-        if SAVE_DEBUG_FILES:
             outputMaskPath = buildOutputPath(OUTPUT_MASK_FILENAME)
             savePngImage(outputMaskPath, binaryMask)
             print(f"Maske gespeichert: {outputMaskPath}")
-
-        detectedParts = findAllValidParts(binaryMask)
-        detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
-        addDerivedPartValues(detectedParts)
-
-        areaValidationData = buildAreaValidationData(detectedParts)
-
-        partCountIsValid = isExpectedPartCount(len(detectedParts))
-        areaIsValid = areaValidationData["is_valid"]
-        detectionIsValid = partCountIsValid and areaIsValid
 
         printAreaValidationInfo(areaValidationData)
 
