@@ -2085,13 +2085,45 @@ def printConsolePartsInfo(detectedParts):
     print(f"Anzahl Teile: {len(detectedParts)}")
     print(f"Erwartet: {EXPECTED_PART_COUNT}")
 
+def transformImagePointToWarpPoint(pointX, pointY, hImageToWarp):
+    imagePoint = np.array([[[pointX, pointY]]], dtype=np.float32)
+    warpedPoint = cv2.perspectiveTransform(imagePoint, hImageToWarp)
+
+    warpedX = float(warpedPoint[0, 0, 0])
+    warpedY = float(warpedPoint[0, 0, 1])
+
+    return warpedX, warpedY
+
+
+def calculateParallaxCenterInWarp(imageBgr, hImageToWarp):
+    imageHeight, imageWidth = imageBgr.shape[:2]
+
+    imageCenterX = (imageWidth - 1) / 2.0
+    imageCenterY = (imageHeight - 1) / 2.0
+
+    return transformImagePointToWarpPoint(
+        imageCenterX,
+        imageCenterY,
+        hImageToWarp,
+    )
+
 def processPartsDetectionImage(imageBgr, hImageToWarp):
     warpedImageBgr = warpImageToA4(imageBgr, hImageToWarp)
 
     binaryMask = buildPartsMask(warpedImageBgr)
 
     if CALCULATE_AREA_WITHOUT_SIDES:
-        binaryMask = calculate_puzzle_piece_shape_without_sides(binaryMask, CAM_HEIGHT)
+        parallaxCenter = calculateParallaxCenterInWarp(imageBgr, hImageToWarp)
+        print(
+            "Parallax-Zentrum im entzerrten A4-Bild: "
+            f"x={parallaxCenter[0]:.1f}, y={parallaxCenter[1]:.1f}"
+        )
+
+        binaryMask = calculate_puzzle_piece_shape_without_sides(
+            binaryMask,
+            CAM_HEIGHT,
+            center=parallaxCenter,
+        )
 
     detectedParts = findAllValidParts(binaryMask)
     detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
