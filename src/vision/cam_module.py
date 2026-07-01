@@ -59,6 +59,7 @@ IMAGE_HEIGHT = 2592
 
 
 STARTUP_WAIT_SECONDS = 3.0
+CAMERA_DISCARD_FRAMES_AFTER_CONTROL_CHANGE = 2
 
 # Bild um 90 Grad im Uhrzeigersinn drehen, falls die Kamera mechanisch verdreht ist.
 ROTATE_90_CLOCKWISE = False
@@ -134,7 +135,7 @@ ARUCO_CAMERA_CONTROL_TRIES = [
     {
         "AeEnable": False,
         "AwbEnable": False,
-        "ExposureTime": 3000,
+        "ExposureTime": 30000,
         "AnalogueGain": 1.0,
         "ColourGains": (1.5, 1.5),
     },
@@ -226,10 +227,10 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 # False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
 SAVE_DEBUG_FILES = True
-
+DEBUG_CAPTURE_MAX_WIDTH_PX = 1280
 # False = Kantenkorrektur wird nicht ausgeführt.
 # True Kantenkorrektur wird durchgeführt aber Stand 1.Juni noch ziemlich wonky
-CALCULATE_AREA_WITHOUT_SIDES = False
+CALCULATE_AREA_WITHOUT_SIDES = True
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -514,6 +515,28 @@ def savePngImage(path, image):
     if not success:
         raise RuntimeError(f"cv2.imwrite konnte das Bild nicht speichern: {path}")
 
+def saveDebugCaptureImage(filename, imageBgr):
+    if not SAVE_DEBUG_FILES:
+        return
+
+    height, width = imageBgr.shape[:2]
+
+    if width > DEBUG_CAPTURE_MAX_WIDTH_PX:
+        scale = DEBUG_CAPTURE_MAX_WIDTH_PX / width
+        newWidth = DEBUG_CAPTURE_MAX_WIDTH_PX
+        newHeight = int(round(height * scale))
+
+        imageToSave = cv2.resize(
+            imageBgr,
+            (newWidth, newHeight),
+            interpolation=cv2.INTER_AREA,
+        )
+    else:
+        imageToSave = imageBgr
+
+    outputPath = buildOutputPath(filename)
+    savePngImage(outputPath, imageToSave)
+    print(f"Debug-Aufnahme gespeichert: {outputPath}")
 
 def clearAlgoInputFolder():
     # Leert den Algorithmus-Input-Ordner vollständig.
@@ -636,6 +659,9 @@ def captureImageFromInitializedCamera(cam, controls=None, waitSecondsBetweeCaptu
         if waitSecondsBetweeCapture > 0:
             time.sleep(waitSecondsBetweeCapture)
 
+        for discardIndex in range(CAMERA_DISCARD_FRAMES_AFTER_CONTROL_CHANGE):
+            _ = cam.capture_array()
+            print(f"Verwerfe Kamera-Frame nach Einstellungswechsel {discardIndex + 1}")
     print("Nehme Bild auf...")
     imageBgr = cam.capture_array()
 
@@ -711,7 +737,6 @@ def getInputImage(cam=None):
 def getMissingMarkerIds(detectedMarkers):
     return [markerId for markerId in REQUIRED_IDS if markerId not in detectedMarkers]
 
-
 def captureImageForArucoDetection(cam=None):
     # Bei Dateitest bleibt alles wie bisher.
     if IMAGE_SOURCE != "camera":
@@ -721,56 +746,57 @@ def captureImageForArucoDetection(cam=None):
     if cam is None and not isPiCameraAvailable():
         return getInputImage(cam)
 
-    bestImage = None
-    bestDetectedMarkers = {}
-    bestDetectedCount = -1
+    localCam = None
 
-    for attemptIndex, controls in enumerate(ARUCO_CAMERA_CONTROL_TRIES, start=1):
-        print(f"ArUco-Aufnahme Versuch {attemptIndex}/{len(ARUCO_CAMERA_CONTROL_TRIES)}")
+    try:
+        if cam is None:
+            # Standalone-Fall: Kamera nur einmal starten und für alle Versuche wiederverwenden.
+            localCam = initCamera()
+            activeCam = localCam
+        else:
+            activeCam = cam
 
-        if cam is not None:
+        bestImage = None
+        bestDetectedCount = -1
+
+        for attemptIndex, controls in enumerate(ARUCO_CAMERA_CONTROL_TRIES, start=1):
+            print(f"ArUco-Aufnahme Versuch {attemptIndex}/{len(ARUCO_CAMERA_CONTROL_TRIES)}")
+
             imageBgr = captureImageFromInitializedCamera(
-                cam,
+                activeCam,
                 controls=controls,
                 waitSecondsBetweeCapture=CAMERA_CONTROL_SETTLE_SECONDS,
             )
-        else:
-            # Standalone-Fall: Kamera selber starten.
-            localCam = None
-            try:
-                localCam = initCamera()
-                imageBgr = captureImageFromInitializedCamera(
-                    localCam,
-                    controls=controls,
-                    waitSecondsBetweeCapture=CAMERA_CONTROL_SETTLE_SECONDS,
-                )
-            finally:
-                stopCamera(localCam)
 
-        detectedMarkers, _ = detectArucoMarkers(imageBgr)
-        detectedCount = len(detectedMarkers)
+            detectedMarkers, _ = detectArucoMarkers(imageBgr)
+            detectedCount = len(detectedMarkers)
+            saveDebugCaptureImage(
+                f"{RUN_NAME}_aruco_attempt_{attemptIndex:02d}_markers_{detectedCount}.png",
+                imageBgr,
+            )
+            print(
+                f"Erkannte ArUco-Marker: {detectedCount}/{len(REQUIRED_IDS)}, "
+                f"fehlend: {getMissingMarkerIds(detectedMarkers)}"
+            )
+
+            if detectedCount > bestDetectedCount:
+                bestImage = imageBgr
+                bestDetectedCount = detectedCount
+
+            if detectedCount == len(REQUIRED_IDS):
+                print("Alle ArUco-Marker erkannt.")
+                return imageBgr
 
         print(
-            f"Erkannte ArUco-Marker: {detectedCount}/{len(REQUIRED_IDS)}, "
-            f"fehlend: {getMissingMarkerIds(detectedMarkers)}"
+            "Keine Aufnahme mit allen ArUco-Markern gefunden. "
+            f"Beste Aufnahme hatte {bestDetectedCount}/{len(REQUIRED_IDS)} Marker."
         )
 
-        if detectedCount > bestDetectedCount:
-            bestImage = imageBgr
-            bestDetectedMarkers = detectedMarkers
-            bestDetectedCount = detectedCount
+        return bestImage
 
-        if detectedCount == len(REQUIRED_IDS):
-            print("Alle ArUco-Marker erkannt.")
-            return imageBgr
-
-    print(
-        "Keine Aufnahme mit allen ArUco-Markern gefunden. "
-        f"Beste Aufnahme hatte {bestDetectedCount}/{len(REQUIRED_IDS)} Marker."
-    )
-
-    return bestImage
-
+    finally:
+        if localCam is not None:
+            stopCamera(localCam)
 # ============================================================
 # ARUCO / A4-ERKENNUNG MIT OFFSET
 # ============================================================

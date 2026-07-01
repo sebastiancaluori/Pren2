@@ -15,7 +15,7 @@ DEBUG_CORRECTED_OVERLAY_IMAGE_PATH = "debug_corrected_overlay.png"
 DEBUG_FINAL_MASK_IMAGE_PATH = "debug_final_mask.png"
 
 # Kamerahöhe über der A4-Fläche in mm. Nur für lokale Ausführung von Bedeutung
-CAMERA_HEIGHT_MM = 500.0
+CAMERA_HEIGHT_MM = 700.0
 # Höhe der Teile in mm.
 PIECE_HEIGHT = 6.0
 # Kleine Konturen ignorieren.
@@ -494,13 +494,13 @@ def calculate_puzzle_piece_shape_without_sides(
     )
 
     # Debugbilder weiterhin speichern.
-    # cv2.imwrite(DEBUG_FINAL_MASK_IMAGE_PATH, working_image)
-    # cv2.imwrite(DEBUG_CORRECTION_POINTS_IMAGE_PATH, debug_correction)
+    cv2.imwrite(DEBUG_FINAL_MASK_IMAGE_PATH, working_image)
+    cv2.imwrite(DEBUG_CORRECTION_POINTS_IMAGE_PATH, debug_correction)
 
     changed_pixels = cv2.absdiff(binary_image, working_image)
-    # debug_overlay = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
-    # debug_overlay[changed_pixels > 0] = (0, 0, 255)
-    # cv2.imwrite(DEBUG_CORRECTED_OVERLAY_IMAGE_PATH, debug_overlay)
+    debug_overlay = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
+    debug_overlay[changed_pixels > 0] = (0, 0, 255)
+    cv2.imwrite(DEBUG_CORRECTED_OVERLAY_IMAGE_PATH, debug_overlay)
 
     return working_image
 
