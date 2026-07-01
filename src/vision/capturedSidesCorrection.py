@@ -40,16 +40,16 @@ def move_points_towards_center(
     Verschiebt mehrere Punkte gleichzeitig Richtung Zentrum.
 
     Formel:
-        new_point = point + (center - point) * (3 / height_mm)
+        new_point = point + (center - point) * (PIECE_HEIGHT / height_mm)
 
     Beispiel:
         height_mm = 500
         point = (130, 0)
         center = (0, 0)
 
-        factor = 3 / 500 = 0.006
-        new_x = 130 + (0 - 130) * 0.006
-        new_x = 129.22
+        factor = 6 / 500 = 0.012
+        new_x = 130 + (0 - 130) * 0.012
+        new_x = 128.44
     """
 
     if height_mm == 0:
@@ -96,7 +96,7 @@ def load_binary_image(image_path: str) -> np.ndarray:
 
 def find_part_contours(
     binary_image: np.ndarray,
-    center: tuple[int, int],
+    center: tuple[float, float],
 ) -> list[np.ndarray]:
     """
     Findet weisse Flächen auf schwarzem Hintergrund.
@@ -146,7 +146,7 @@ def find_part_contours(
 
     cv2.circle(
         debug_image,
-        center=(int(center_x), int(center_y)),
+        center=(int(round(center_x)), int(round(center_y))),
         radius=8,
         color=(255, 0, 0),  # blau
         thickness=-1
@@ -154,7 +154,7 @@ def find_part_contours(
 
     cv2.drawMarker(
         debug_image,
-        position=(int(center_x), int(center_y)),
+        position=(int(round(center_x)), int(round(center_y))),
         color=(0, 255, 255),  # gelb
         markerType=cv2.MARKER_CROSS,
         markerSize=30,
@@ -163,8 +163,8 @@ def find_part_contours(
 
     cv2.putText(
         debug_image,
-        text=f"Zentrum ({int(center_x)}, {int(center_y)})",
-        org=(int(center_x) + 10, int(center_y) - 10),
+        text=f"Zentrum ({int(round(center_x))}, {int(round(center_y))})",
+        org=(int(round(center_x)) + 10, int(round(center_y)) - 10),
         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
         fontScale=0.6,
         color=(0, 255, 255),
@@ -184,7 +184,7 @@ def find_part_contours(
 
 def should_correct_contour_point(
     point: tuple[int, int],
-    center: tuple[int, int],
+    center: tuple[float, float],
     binary_image: np.ndarray,
 ) -> bool:
     """
@@ -248,7 +248,7 @@ def correct_contour(
     debug_image: np.ndarray,
     contour: np.ndarray,
     height_mm: float,
-    center: tuple[int, int],
+    center: tuple[float, float],
     contour_index: int,
 ) -> None:
     """
@@ -392,6 +392,7 @@ def correct_binary_image_file(
 def calculate_puzzle_piece_shape_without_sides(
     binary_image: np.ndarray,
     height_mm: float,
+    center: tuple[float, float] | None = None,
 ) -> np.ndarray:
     """
     Korrigiert ein bereits geladenes Binärbild.
@@ -405,6 +406,10 @@ def calculate_puzzle_piece_shape_without_sides(
 
         height_mm:
             Kamerahöhe / Geometriehöhe in mm.
+
+        center:
+            Optionales Parallax-Zentrum in Pixelkoordinaten des Binärbildes.
+            Wenn None, wird die Bildmitte als Fallback verwendet.
 
     Output:
         Korrigiertes Binärbild als np.ndarray.
@@ -423,9 +428,12 @@ def calculate_puzzle_piece_shape_without_sides(
 
     working_image = binary_image.copy()
 
-    center_x = working_image.shape[1] // 2
-    center_y = working_image.shape[0] // 2
-    center = (center_x, center_y)
+    if center is None:
+        center_x = working_image.shape[1] / 2.0
+        center_y = working_image.shape[0] / 2.0
+        center = (center_x, center_y)
+    else:
+        center = (float(center[0]), float(center[1]))
 
     print(f"Zentrum in Pixelkoordinaten: {center}")
 
@@ -436,12 +444,11 @@ def calculate_puzzle_piece_shape_without_sides(
 
     print(f"Gefundene Konturen: {len(contours)}")
 
-
     debug_correction = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
 
     cv2.drawMarker(
         debug_correction,
-        position=center,
+        position=(int(round(center[0])), int(round(center[1]))),
         color=(0, 255, 255),
         markerType=cv2.MARKER_CROSS,
         markerSize=30,
@@ -490,13 +497,12 @@ def calculate_puzzle_piece_shape_without_sides(
     # cv2.imwrite(DEBUG_FINAL_MASK_IMAGE_PATH, working_image)
     # cv2.imwrite(DEBUG_CORRECTION_POINTS_IMAGE_PATH, debug_correction)
 
-    # debug_overlay = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
     changed_pixels = cv2.absdiff(binary_image, working_image)
+    # debug_overlay = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
     # debug_overlay[changed_pixels > 0] = (0, 0, 255)
     # cv2.imwrite(DEBUG_CORRECTED_OVERLAY_IMAGE_PATH, debug_overlay)
 
     return working_image
-
 
 
 # ============================================================
