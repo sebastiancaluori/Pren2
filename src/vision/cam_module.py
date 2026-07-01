@@ -2190,7 +2190,14 @@ def scorePartsDetectionResult(result):
 
 
 def main(cam=None):
+    localMainCam = None
+
     try:
+        activeCam = cam
+
+        if activeCam is None and IMAGE_SOURCE == "camera" and isPiCameraAvailable():
+            localMainCam = initCamera()
+            activeCam = localMainCam
         # Bewusst am Anfang. Der Solver sieht innerhalb eines runs niemals zu keinem Zeitpunkt etwas,
         # das nicht explizit innerhalb des aktuellen runs abgesegnet wurde.
         clearAlgoInputFolder()
@@ -2198,7 +2205,7 @@ def main(cam=None):
         clearDebugOutputFolder()
         print(f"Debug-Output-Ordner geleert: {OUTPUT_DIR}")
         #imageBgr = getInputImage(cam)
-        imageBgr = captureImageForArucoDetection(cam)
+        imageBgr = captureImageForArucoDetection(activeCam)
         imageBgr = rotateImageIfNeeded(imageBgr)
 
         if SAVE_DEBUG_FILES:
@@ -2255,29 +2262,17 @@ def main(cam=None):
 
         if bestPartsResult["detectionIsValid"]:
             print("Teile-Erkennung mit ArUco-Aufnahme gültig.")
-        elif IMAGE_SOURCE == "camera" and (cam is not None or isPiCameraAvailable()):
+        elif IMAGE_SOURCE == "camera" and activeCam is not None:
             for attemptIndex, controls in enumerate(PARTS_CAMERA_CONTROL_TRIES, start=1):
                 print(
                     f"Teile-Aufnahme Versuch {attemptIndex}/{len(PARTS_CAMERA_CONTROL_TRIES)}"
                 )
 
-                if cam is not None:
-                    partsImageBgr = captureImageFromInitializedCamera(
-                        cam,
-                        controls=controls,
-                        waitSecondsBetweeCapture=PARTS_CAMERA_CONTROL_SETTLE_SECONDS,
-                    )
-                else:
-                    localCam = None
-                    try:
-                        localCam = initCamera()
-                        partsImageBgr = captureImageFromInitializedCamera(
-                            localCam,
-                            controls=controls,
-                            waitSecondsBetweeCapture=PARTS_CAMERA_CONTROL_SETTLE_SECONDS,
-                        )
-                    finally:
-                        stopCamera(localCam)
+                partsImageBgr = captureImageFromInitializedCamera(
+                    activeCam,
+                    controls=controls,
+                    waitSecondsBetweeCapture=PARTS_CAMERA_CONTROL_SETTLE_SECONDS,
+                )
 
                 partsImageBgr = rotateImageIfNeeded(partsImageBgr)
                 currentPartsResult = processPartsDetectionImage(
@@ -2354,6 +2349,10 @@ def main(cam=None):
     except Exception as e:
         print("Fehler:")
         print(e)
+
+    finally:
+        if localMainCam is not None:
+            stopCamera(localMainCam)
 
 
 if __name__ == "__main__":
