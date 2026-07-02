@@ -97,103 +97,28 @@ CAMERA_CONTROLS_FOR_INTERNAL_USE = {
 # Kameraeinstellungen für ArUco-Wiederholaufnahmen.
 # Ziel: robuste Markererkennung bei wechselnder Beleuchtung.
 ARUCO_CAMERA_CONTROL_TRIES = [
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 6000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 8000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 10000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 12000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 4000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 30000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 15000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
+    {"AeEnable": True, "AwbEnable": False},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 6000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 4000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 8000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 10000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 12000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 15000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 30000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+
 ]
 CAMERA_CONTROL_SETTLE_SECONDS = 0.4
 
 # Kameraeinstellungen für Teile-Wiederholaufnahmen.
 # Ziel: stabiler Kontrast zwischen dunklen Puzzleteilen und heller A4-Fläche.
 PARTS_CAMERA_CONTROL_TRIES = [
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 6000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 5000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 7000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 4000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 8000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
-    {
-        "AeEnable": False,
-        "AwbEnable": False,
-        "ExposureTime": 10000,
-        "AnalogueGain": 1.0,
-        "ColourGains": (1.5, 1.5),
-    },
+    {"AeEnable": True, "AwbEnable": False},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 6000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 5000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 4000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 7000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 8000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
+    {"AeEnable": False, "AwbEnable": False, "ExposureTime": 10000, "AnalogueGain": 1.0, "ColourGains": (1.5, 1.5)},
 ]
 
 PARTS_CAMERA_CONTROL_SETTLE_SECONDS = 0.4
