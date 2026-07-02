@@ -9,7 +9,10 @@ import json
 import shutil
 import time
 from pathlib import Path
-from capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
+try:
+    from .capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
+except ImportError:
+    from capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
 
 import cv2
 import numpy as np
