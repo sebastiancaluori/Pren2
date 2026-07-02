@@ -494,6 +494,7 @@ def calculate_puzzle_piece_shape_without_sides(
     )
 
     # Debugbilder weiterhin speichern.
+    """
     cv2.imwrite(DEBUG_FINAL_MASK_IMAGE_PATH, working_image)
     cv2.imwrite(DEBUG_CORRECTION_POINTS_IMAGE_PATH, debug_correction)
 
@@ -501,7 +502,7 @@ def calculate_puzzle_piece_shape_without_sides(
     debug_overlay = cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
     debug_overlay[changed_pixels > 0] = (0, 0, 255)
     cv2.imwrite(DEBUG_CORRECTED_OVERLAY_IMAGE_PATH, debug_overlay)
-
+    """
     return working_image
 
 

@@ -154,7 +154,7 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
 # False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
-SAVE_DEBUG_FILES = True
+SAVE_DEBUG_FILES = False
 DEBUG_CAPTURE_MAX_WIDTH_PX = 1280
 # False = Kantenkorrektur wird nicht ausgeführt.
 # True Kantenkorrektur wird durchgeführt aber Stand 1.Juni noch ziemlich wonky
